@@ -1,0 +1,309 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  name           String
+  password       String
+  role           UserRole @default(OPERATOR)
+  status         UserStatus @default(ACTIVE)
+  lastLogin      DateTime?
+  phone          String?
+  department     String?
+  departmentId   String?
+  avatar         String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentRef  Department? @relation(fields: [departmentId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relacionamentos
+  assignedConversations Conversation[] @relation("AssignedOperator")
+  createdConversations  Conversation[] @relation("CreatedBy")
+  messages             Message[]
+  campaigns            Campaign[]
+  reports              Report[]
+  webhooks             Webhook[]
+
+  @@map("users")
+}
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  domain      String?  @unique
+  isActive    Boolean  @default(true)
+  settings    Json?    // Configurações da organização
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relacionamentos
+  users       User[]
+  departments Department[]
+  instances   Instance[]
+  contacts    Contact[]
+  conversations Conversation[]
+  messages    Message[]
+  campaigns   Campaign[]
+  reports     Report[]
+  webhooks    Webhook[]
+
+  @@map("organizations")
+}
+
+model Department {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  color          String   @default("#3B82F6")
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relacionamentos
+  users          User[]
+
+  @@unique([name, organizationId])
+  @@map("departments")
+}
+
+model Instance {
+  id             String   @id @default(cuid())
+  name           String
+  instanceName   String   @unique // Nome da instância na Evolution API
+  description    String?
+  status         InstanceStatus @default(DISCONNECTED)
+  qrCode         String?
+  webhookUrl     String?
+  webhookEvents  String[] // Eventos configurados para webhook
+  settings       Json?    // Configurações específicas da instância
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relacionamentos
+  conversations Conversation[]
+  messages      Message[]
+
+  @@map("instances")
+}
+
+model Contact {
+  id             String   @id @default(cuid())
+  phoneNumber    String
+  name           String?
+  email          String?
+  company        String?
+  tags           String[]
+  notes          String?
+  isActive       Boolean  @default(true)
+  lastInteraction DateTime?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relacionamentos
+  conversations Conversation[]
+  messages      Message[]
+
+  @@unique([phoneNumber, organizationId])
+  @@map("contacts")
+}
+
+model Conversation {
+  id             String   @id @default(cuid())
+  title          String?
+  status         ConversationStatus @default(OPEN)
+  priority       Priority @default(MEDIUM)
+  tags           String[]
+  notes          String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactId      String
+  contact        Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  instanceId     String
+  instance       Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  assignedToId   String?
+  assignedTo     User? @relation("AssignedOperator", fields: [assignedToId], references: [id])
+  createdById    String
+  createdBy      User @relation("CreatedBy", fields: [createdById], references: [id])
+  lastMessageAt  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relacionamentos
+  messages       Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  content        String
+  type           MessageType @default(TEXT)
+  direction      MessageDirection @default(INBOUND)
+  status         MessageStatus @default(SENT)
+  mediaUrl       String?
+  mediaType      String?
+  metadata       Json?    // Dados adicionais da mensagem
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  contactId      String
+  contact        Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  instanceId     String
+  instance       Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  sentById       String?
+  sentBy         User? @relation(fields: [sentById], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("messages")
+}
+
+model Campaign {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  status         CampaignStatus @default(DRAFT)
+  messageTemplate String
+  targetContacts String[] // IDs dos contatos alvo
+  scheduledAt    DateTime?
+  sentAt         DateTime?
+  sentCount      Int      @default(0)
+  deliveredCount Int      @default(0)
+  readCount      Int      @default(0)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdById    String
+  createdBy      User @relation(fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("campaigns")
+}
+
+model Report {
+  id             String   @id @default(cuid())
+  name           String
+  type           ReportType
+  filters        Json?    // Filtros aplicados no relatório
+  data           Json?    // Dados do relatório
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdById    String
+  createdBy      User @relation(fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("reports")
+}
+
+model Webhook {
+  id             String   @id @default(cuid())
+  name           String
+  url            String
+  events         String[] // Eventos que disparam o webhook
+  isActive       Boolean  @default(true)
+  secret         String?  // Chave secreta para validação
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdById    String
+  createdBy      User @relation(fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("webhooks")
+}
+
+// Enums
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  OPERATOR
+  VIEWER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+}
+
+enum InstanceStatus {
+  CONNECTED
+  DISCONNECTED
+  CONNECTING
+  QRCODE
+  ERROR
+}
+
+enum ConversationStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+  WAITING
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  LOCATION
+  CONTACT
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  PENDING
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  COMPLETED
+  CANCELLED
+}
+
+enum ReportType {
+  PERFORMANCE
+  MESSAGES
+  CONVERSATIONS
+  CONTACTS
+  CUSTOM
+}

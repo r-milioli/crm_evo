@@ -1,0 +1,192 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-gray-200;
+  }
+  
+  body {
+    @apply bg-black text-white font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+}
+
+@layer components {
+  /* Botões */
+  .btn {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-black;
+  }
+
+  .btn-primary {
+    @apply bg-green-500 text-white hover:bg-green-600 active:bg-green-700;
+  }
+
+  .btn-secondary {
+    @apply bg-gray-900/40 text-white hover:bg-gray-900/50 border border-gray-800/50;
+  }
+
+  .btn-outline {
+    @apply border border-green-500 text-green-500 hover:bg-green-500 hover:text-white;
+  }
+
+  .btn-ghost {
+    @apply hover:bg-gray-900/40 text-gray-400 hover:text-white;
+  }
+
+  .btn-danger {
+    @apply bg-red-600 text-white hover:bg-red-700 active:bg-red-800;
+  }
+
+  .btn-info {
+    @apply bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800;
+  }
+
+  /* Inputs */
+  .input {
+    @apply flex h-10 w-full rounded-lg border border-gray-800/50 bg-gray-900/30 px-3 py-2 text-sm text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .input-error {
+    @apply border-red-500 focus:ring-red-500;
+  }
+
+  /* Cards */
+  .card {
+    @apply rounded-lg border border-gray-800/50 bg-gray-900/30 p-6 shadow-sm;
+  }
+
+  .card-header {
+    @apply flex flex-col space-y-1.5 p-6;
+  }
+
+  .card-title {
+    @apply text-lg font-semibold leading-none tracking-tight text-white;
+  }
+
+  .card-description {
+    @apply text-sm text-gray-400;
+  }
+
+  .card-content {
+    @apply p-6 pt-0;
+  }
+
+  .card-footer {
+    @apply flex items-center p-6 pt-0;
+  }
+
+  /* Badges */
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2;
+  }
+
+  .badge-primary {
+    @apply bg-green-500 text-white hover:bg-green-600;
+  }
+
+  .badge-secondary {
+    @apply bg-gray-900/40 text-white hover:bg-gray-900/50;
+  }
+
+  .badge-outline {
+    @apply border border-gray-800/50 text-white hover:bg-gray-900/40;
+  }
+
+  /* Status badges */
+  .badge-success {
+    @apply bg-green-500 text-white;
+  }
+
+  .badge-warning {
+    @apply bg-yellow-500 text-white;
+  }
+
+  .badge-error {
+    @apply bg-red-500 text-white;
+  }
+
+  .badge-info {
+    @apply bg-blue-500 text-white;
+  }
+
+  /* Loading spinner */
+  .spinner {
+    @apply animate-spin rounded-full border-2 border-gray-800/50 border-t-green-500;
+  }
+
+  /* Scrollbar customizada */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #374151 #000000;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: #000000;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #374151;
+    border-radius: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: #4b5563;
+  }
+
+  /* Animações de entrada */
+  .fade-in {
+    @apply animate-fade-in;
+  }
+
+  .slide-up {
+    @apply animate-slide-up;
+  }
+
+  .slide-down {
+    @apply animate-slide-down;
+  }
+
+  /* Efeitos de hover */
+  .hover-glow:hover {
+    @apply shadow-lg transition-shadow duration-300;
+  }
+
+  /* Gradientes */
+  .gradient-whatsapp {
+    background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+  }
+
+  .gradient-dark {
+    background: linear-gradient(135deg, #000000 0%, #1A1A1A 100%);
+  }
+}
+
+@layer utilities {
+  /* Utilitários personalizados */
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .bg-grid {
+    background-image: 
+      linear-gradient(rgba(37, 211, 102, 0.1) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(37, 211, 102, 0.1) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  .bg-dots {
+    background-image: radial-gradient(circle, rgba(37, 211, 102, 0.2) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+}
