@@ -542,7 +542,7 @@ const Settings: React.FC = () => {
                         <p className="text-sm text-gray-400">{department.description}</p>
                       )}
                       <p className="text-xs text-gray-500">
-                        {department._count?.users || 0} usuário{department._count?.users !== 1 ? 's' : ''}
+                        {department._count?.userDepartments || 0} usuário{department._count?.userDepartments !== 1 ? 's' : ''}
                       </p>
                     </div>
                   </div>

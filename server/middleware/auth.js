@@ -45,7 +45,7 @@ const authMiddleware = async (req, res, next) => {
       });
     }
 
-    if (!user.isActive) {
+    if (user.status !== 'ACTIVE') {
       return res.status(401).json({ 
         error: 'Usuário inativo' 
       });

@@ -9,7 +9,7 @@ export interface Department {
   createdAt: string;
   updatedAt: string;
   _count?: {
-    users: number;
+    userDepartments: number;
   };
 }
 

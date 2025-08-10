@@ -31,6 +31,8 @@ const UserModal: React.FC<UserModalProps> = ({
     department: ''
   });
 
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
+
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Buscar departamentos
@@ -48,8 +50,13 @@ const UserModal: React.FC<UserModalProps> = ({
         password: '', // Não preencher senha em edição
         role: user.role,
         phone: user.phone || '',
-        department: user.department || ''
+        department: user.userDepartments?.[0]?.department.name || ''
       });
+      
+      // Carregar departamentos selecionados
+      setSelectedDepartments(
+        user.userDepartments?.map(ud => ud.department.name) || []
+      );
     } else {
       setFormData({
         name: '',
@@ -59,6 +66,7 @@ const UserModal: React.FC<UserModalProps> = ({
         phone: '',
         department: ''
       });
+      setSelectedDepartments([]);
     }
     setErrors({});
   }, [user, isEdit]);
@@ -101,12 +109,16 @@ const UserModal: React.FC<UserModalProps> = ({
           email: formData.email,
           role: formData.role,
           phone: formData.phone,
-          department: formData.department
+          department: selectedDepartments.join(',') // Enviar como string separada por vírgula
         };
         await onSave(updateData);
       } else {
         // Modo criação
-        await onSave(formData);
+        const createData = {
+          ...formData,
+          department: selectedDepartments.join(',') // Enviar como string separada por vírgula
+        };
+        await onSave(createData);
       }
       
       onClose();
@@ -245,30 +257,42 @@ const UserModal: React.FC<UserModalProps> = ({
             />
           </div>
 
-          {/* Departamento */}
-          <div>
-            <label className="block text-sm font-medium text-white mb-2">
-              <Building className="w-4 h-4 inline mr-2" />
-              Departamento (Opcional)
-            </label>
-            <select
-              value={formData.department}
-              onChange={(e) => handleInputChange('department', e.target.value)}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-green-500"
-            >
-              <option value="">Selecione um departamento</option>
-              {departments.map((department) => (
-                <option key={department.id} value={department.name}>
-                  {department.name}
-                </option>
-              ))}
-            </select>
-            {departments.length === 0 && (
-              <p className="text-xs text-yellow-400 mt-1">
-                Nenhum departamento cadastrado. Crie departamentos em Configurações.
-              </p>
-            )}
-          </div>
+                     {/* Departamentos */}
+           <div>
+             <label className="block text-sm font-medium text-white mb-2">
+               <Building className="w-4 h-4 inline mr-2" />
+               Departamentos (Opcional)
+             </label>
+             <div className="space-y-2 max-h-32 overflow-y-auto">
+               {departments.map((department) => (
+                 <label key={department.id} className="flex items-center space-x-2 cursor-pointer">
+                   <input
+                     type="checkbox"
+                     checked={selectedDepartments.includes(department.name)}
+                     onChange={(e) => {
+                       if (e.target.checked) {
+                         setSelectedDepartments(prev => [...prev, department.name]);
+                       } else {
+                         setSelectedDepartments(prev => prev.filter(d => d !== department.name));
+                       }
+                     }}
+                     className="w-4 h-4 text-green-600 bg-gray-700 border-gray-600 rounded focus:ring-green-500 focus:ring-2"
+                   />
+                   <span className="text-sm text-gray-300">{department.name}</span>
+                 </label>
+               ))}
+             </div>
+             {departments.length === 0 && (
+               <p className="text-xs text-yellow-400 mt-1">
+                 Nenhum departamento cadastrado. Crie departamentos em Configurações.
+               </p>
+             )}
+             {selectedDepartments.length > 0 && (
+               <p className="text-xs text-gray-400 mt-1">
+                 Selecionados: {selectedDepartments.join(', ')}
+               </p>
+             )}
+           </div>
 
           {/* Role */}
           <div>

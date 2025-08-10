@@ -36,7 +36,7 @@ router.get('/', requireRole(['ADMIN', 'MANAGER']), async (req, res) => {
       include: {
         _count: {
           select: {
-            users: true
+            userDepartments: true
           }
         }
       },
@@ -63,7 +63,7 @@ router.get('/stats', requireRole(['ADMIN', 'MANAGER']), async (req, res) => {
       include: {
         _count: {
           select: {
-            users: true
+            userDepartments: true
           }
         }
       }
@@ -71,8 +71,8 @@ router.get('/stats', requireRole(['ADMIN', 'MANAGER']), async (req, res) => {
 
     const stats = {
       total: departments.length,
-      withUsers: departments.filter(d => d._count.users > 0).length,
-      empty: departments.filter(d => d._count.users === 0).length
+      withUsers: departments.filter(d => d._count.userDepartments > 0).length,
+      empty: departments.filter(d => d._count.userDepartments === 0).length
     };
 
     logger.info(`Estatísticas de departamentos calculadas para organização ${req.user.organizationId}`);
@@ -96,7 +96,7 @@ router.get('/:id', requireRole(['ADMIN', 'MANAGER']), async (req, res) => {
       include: {
         _count: {
           select: {
-            users: true
+            userDepartments: true
           }
         }
       }
@@ -149,7 +149,7 @@ router.post('/', requireRole(['ADMIN']), async (req, res) => {
       include: {
         _count: {
           select: {
-            users: true
+            userDepartments: true
           }
         }
       }
@@ -216,7 +216,7 @@ router.put('/:id', requireRole(['ADMIN']), async (req, res) => {
       include: {
         _count: {
           select: {
-            users: true
+            userDepartments: true
           }
         }
       }
@@ -244,7 +244,7 @@ router.delete('/:id', requireRole(['ADMIN']), async (req, res) => {
       include: {
         _count: {
           select: {
-            users: true
+            userDepartments: true
           }
         }
       }
@@ -255,7 +255,7 @@ router.delete('/:id', requireRole(['ADMIN']), async (req, res) => {
     }
 
     // Verificar se há usuários no departamento
-    if (department._count.users > 0) {
+    if (department._count.userDepartments > 0) {
       return res.status(400).json({ 
         error: 'Não é possível remover um departamento que possui usuários. Transfira os usuários para outro departamento primeiro.' 
       });
@@ -269,36 +269,6 @@ router.delete('/:id', requireRole(['ADMIN']), async (req, res) => {
     res.json({ message: 'Departamento removido com sucesso' });
   } catch (error) {
     logger.error('Erro ao remover departamento:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-// Buscar estatísticas de departamentos
-router.get('/stats', requireRole(['ADMIN', 'MANAGER']), async (req, res) => {
-  try {
-    const departments = await prisma.department.findMany({
-      where: {
-        organizationId: req.user.organizationId
-      },
-      include: {
-        _count: {
-          select: {
-            users: true
-          }
-        }
-      }
-    });
-
-    const stats = {
-      total: departments.length,
-      withUsers: departments.filter(d => d._count.users > 0).length,
-      empty: departments.filter(d => d._count.users === 0).length
-    };
-
-    logger.info(`Estatísticas de departamentos calculadas para organização ${req.user.organizationId}`);
-    res.json(stats);
-  } catch (error) {
-    logger.error('Erro ao buscar estatísticas de departamentos:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });

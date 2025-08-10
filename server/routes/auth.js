@@ -54,7 +54,7 @@ router.post('/login', loginValidation, async (req, res) => {
       });
     }
 
-    if (!user.isActive) {
+    if (user.status !== 'ACTIVE') {
       return res.status(401).json({ 
         error: 'Usuário inativo' 
       });
@@ -231,7 +231,7 @@ router.get('/verify', async (req, res) => {
       }
     });
 
-    if (!user || !user.isActive || !user.organization.isActive) {
+    if (!user || user.status !== 'ACTIVE' || !user.organization.isActive) {
       return res.status(401).json({ 
         error: 'Token inválido' 
       });
@@ -284,7 +284,7 @@ router.post('/refresh', async (req, res) => {
       }
     });
 
-    if (!user || !user.isActive || !user.organization.isActive) {
+    if (!user || user.status !== 'ACTIVE' || !user.organization.isActive) {
       return res.status(401).json({ 
         error: 'Token inválido' 
       });

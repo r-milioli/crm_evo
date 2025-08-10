@@ -12,7 +12,14 @@ export interface User {
   updatedAt: string;
   avatar?: string;
   phone?: string;
-  department?: string;
+  userDepartments?: {
+    id: string;
+    department: {
+      id: string;
+      name: string;
+      color: string;
+    };
+  }[];
 }
 
 export interface CreateUserData {

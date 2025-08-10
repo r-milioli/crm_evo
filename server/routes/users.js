@@ -8,8 +8,16 @@ const { requireRole } = require('../middleware/auth');
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// Validações
-const userValidation = [
+// Validações para criação
+const createUserValidation = [
+  body('name').isLength({ min: 2 }).withMessage('Nome deve ter pelo menos 2 caracteres'),
+  body('email').isEmail().withMessage('Email inválido'),
+  body('password').isLength({ min: 6 }).withMessage('Senha deve ter pelo menos 6 caracteres'),
+  body('role').isIn(['ADMIN', 'MANAGER', 'OPERATOR', 'VIEWER']).withMessage('Role inválido')
+];
+
+// Validações para atualização
+const updateUserValidation = [
   body('name').isLength({ min: 2 }).withMessage('Nome deve ter pelo menos 2 caracteres'),
   body('email').isEmail().withMessage('Email inválido'),
   body('role').isIn(['ADMIN', 'MANAGER', 'OPERATOR', 'VIEWER']).withMessage('Role inválido')
@@ -47,8 +55,20 @@ router.get('/', requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, res) => {
           email: true,
           role: true,
           status: true,
+          phone: true,
           lastLogin: true,
           createdAt: true,
+          userDepartments: {
+            include: {
+              department: {
+                select: {
+                  id: true,
+                  name: true,
+                  color: true
+                }
+              }
+            }
+          },
           _count: {
             select: {
               assignedConversations: true,
@@ -131,9 +151,21 @@ router.get('/:id', requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, res) => {
         email: true,
         role: true,
         status: true,
+        phone: true,
         lastLogin: true,
         createdAt: true,
         updatedAt: true,
+        userDepartments: {
+          include: {
+            department: {
+              select: {
+                id: true,
+                name: true,
+                color: true
+              }
+            }
+          }
+        },
         _count: {
           select: {
             assignedConversations: true,
@@ -156,7 +188,7 @@ router.get('/:id', requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, res) => {
 });
 
 // Criar usuário
-router.post('/', requireRole(['ADMIN', 'SUPER_ADMIN']), userValidation, async (req, res) => {
+router.post('/', requireRole(['ADMIN', 'SUPER_ADMIN']), createUserValidation, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -166,7 +198,7 @@ router.post('/', requireRole(['ADMIN', 'SUPER_ADMIN']), userValidation, async (r
       });
     }
 
-    const { name, email, password, role, status } = req.body;
+    const { name, email, password, role, status, phone, department } = req.body;
     const organizationId = req.user.organizationId;
 
     // Verificar se email já existe
@@ -191,15 +223,56 @@ router.post('/', requireRole(['ADMIN', 'SUPER_ADMIN']), userValidation, async (r
         password: hashedPassword,
         role,
         status: status || 'ACTIVE',
+        phone: phone || null,
         organizationId
-      },
+      }
+    });
+
+    // Associar departamentos se fornecidos
+    if (department) {
+      const departmentNames = department.split(',').map(d => d.trim()).filter(d => d);
+      
+      for (const deptName of departmentNames) {
+        const departmentRecord = await prisma.department.findFirst({
+          where: {
+            name: deptName,
+            organizationId
+          }
+        });
+        
+        if (departmentRecord) {
+          await prisma.userDepartment.create({
+            data: {
+              userId: user.id,
+              departmentId: departmentRecord.id
+            }
+          });
+        }
+      }
+    }
+
+    // Buscar usuário com departamentos
+    const userWithDepartments = await prisma.user.findUnique({
+      where: { id: user.id },
       select: {
         id: true,
         name: true,
         email: true,
         role: true,
         status: true,
-        createdAt: true
+        phone: true,
+        createdAt: true,
+        userDepartments: {
+          include: {
+            department: {
+              select: {
+                id: true,
+                name: true,
+                color: true
+              }
+            }
+          }
+        }
       }
     });
 
@@ -207,7 +280,7 @@ router.post('/', requireRole(['ADMIN', 'SUPER_ADMIN']), userValidation, async (r
 
     res.status(201).json({
       message: 'Usuário criado com sucesso',
-      user
+      user: userWithDepartments
     });
 
   } catch (error) {
@@ -217,7 +290,7 @@ router.post('/', requireRole(['ADMIN', 'SUPER_ADMIN']), userValidation, async (r
 });
 
 // Atualizar usuário
-router.put('/:id', requireRole(['ADMIN', 'SUPER_ADMIN']), userValidation, async (req, res) => {
+router.put('/:id', requireRole(['ADMIN', 'SUPER_ADMIN']), updateUserValidation, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -228,7 +301,7 @@ router.put('/:id', requireRole(['ADMIN', 'SUPER_ADMIN']), userValidation, async 
     }
 
     const { id } = req.params;
-    const { name, email, password, role, status } = req.body;
+    const { name, email, password, role, status, phone, department } = req.body;
     const organizationId = req.user.organizationId;
 
     // Verificar se o usuário existe
@@ -261,7 +334,8 @@ router.put('/:id', requireRole(['ADMIN', 'SUPER_ADMIN']), userValidation, async 
       name,
       email,
       role,
-      status
+      status,
+      phone: phone || null
     };
 
     // Adicionar senha se fornecida
@@ -272,14 +346,62 @@ router.put('/:id', requireRole(['ADMIN', 'SUPER_ADMIN']), userValidation, async 
     // Atualizar usuário
     const user = await prisma.user.update({
       where: { id },
-      data: updateData,
+      data: updateData
+    });
+
+    // Gerenciar departamentos
+    if (department !== undefined) {
+      // Remover todas as associações existentes
+      await prisma.userDepartment.deleteMany({
+        where: { userId: id }
+      });
+
+      // Adicionar novas associações se departamentos forem fornecidos
+      if (department) {
+        const departmentNames = department.split(',').map(d => d.trim()).filter(d => d);
+        
+        for (const deptName of departmentNames) {
+          const departmentRecord = await prisma.department.findFirst({
+            where: {
+              name: deptName,
+              organizationId
+            }
+          });
+          
+          if (departmentRecord) {
+            await prisma.userDepartment.create({
+              data: {
+                userId: id,
+                departmentId: departmentRecord.id
+              }
+            });
+          }
+        }
+      }
+    }
+
+    // Buscar usuário atualizado com departamentos
+    const userWithDepartments = await prisma.user.findUnique({
+      where: { id },
       select: {
         id: true,
         name: true,
         email: true,
         role: true,
         status: true,
-        updatedAt: true
+        phone: true,
+        updatedAt: true,
+        userDepartments: {
+          include: {
+            department: {
+              select: {
+                id: true,
+                name: true,
+                color: true
+              }
+            }
+          }
+        }
       }
     });
 
@@ -287,7 +409,7 @@ router.put('/:id', requireRole(['ADMIN', 'SUPER_ADMIN']), userValidation, async 
 
     res.json({
       message: 'Usuário atualizado com sucesso',
-      user
+      user: userWithDepartments
     });
 
   } catch (error) {
@@ -541,12 +663,24 @@ router.get('/profile/me', async (req, res) => {
         email: true,
         role: true,
         status: true,
+        phone: true,
         lastLogin: true,
         createdAt: true,
         organization: {
           select: {
             id: true,
             name: true
+          }
+        },
+        userDepartments: {
+          include: {
+            department: {
+              select: {
+                id: true,
+                name: true,
+                color: true
+              }
+            }
           }
         },
         _count: {
@@ -573,7 +707,7 @@ router.get('/profile/me', async (req, res) => {
 // Atualizar perfil do usuário atual
 router.put('/profile/me', async (req, res) => {
   try {
-    const { name, email } = req.body;
+    const { name, email, phone, department } = req.body;
     const userId = req.user.id;
 
     // Verificar se o novo email já existe (se foi alterado)
@@ -594,15 +728,64 @@ router.put('/profile/me', async (req, res) => {
       where: { id: userId },
       data: {
         name,
-        email
-      },
+        email,
+        phone: phone || null
+      }
+    });
+
+    // Gerenciar departamentos se fornecidos
+    if (department !== undefined) {
+      // Remover todas as associações existentes
+      await prisma.userDepartment.deleteMany({
+        where: { userId }
+      });
+
+      // Adicionar novas associações se departamentos forem fornecidos
+      if (department) {
+        const departmentNames = department.split(',').map(d => d.trim()).filter(d => d);
+        
+        for (const deptName of departmentNames) {
+          const departmentRecord = await prisma.department.findFirst({
+            where: {
+              name: deptName,
+              organizationId: req.user.organizationId
+            }
+          });
+          
+          if (departmentRecord) {
+            await prisma.userDepartment.create({
+              data: {
+                userId,
+                departmentId: departmentRecord.id
+              }
+            });
+          }
+        }
+      }
+    }
+
+    // Buscar usuário atualizado com departamentos
+    const userWithDepartments = await prisma.user.findUnique({
+      where: { id: userId },
       select: {
         id: true,
         name: true,
         email: true,
         role: true,
         status: true,
-        updatedAt: true
+        phone: true,
+        updatedAt: true,
+        userDepartments: {
+          include: {
+            department: {
+              select: {
+                id: true,
+                name: true,
+                color: true
+              }
+            }
+          }
+        }
       }
     });
 
@@ -610,7 +793,7 @@ router.put('/profile/me', async (req, res) => {
 
     res.json({
       message: 'Perfil atualizado com sucesso',
-      user
+      user: userWithDepartments
     });
 
   } catch (error) {

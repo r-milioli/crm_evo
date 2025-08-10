@@ -158,8 +158,11 @@ const Users: React.FC = () => {
 
   // Filtros
   const filteredUsers = users.filter((user) => {
+    const userDepartments = user.userDepartments?.map(ud => ud.department.name).join(' ') || '';
     const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase());
+                         user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (user.phone && user.phone.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                         userDepartments.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
     const matchesRole = roleFilter === 'all' || user.role === roleFilter;
     
@@ -378,13 +381,26 @@ const Users: React.FC = () => {
                     <div>
                       <h3 className="text-lg font-semibold text-white">{user.name}</h3>
                       <p className="text-sm text-gray-400">{user.email}</p>
-                      <div className="flex items-center space-x-2 mt-1">
-                        {getRoleBadge(user.role)}
-                        {getStatusBadge(user.status)}
-                      </div>
-                      {user.department && (
-                        <p className="text-xs text-gray-500 mt-1">{user.department}</p>
-                      )}
+                                             {user.phone && (
+                         <p className="text-sm text-gray-400">{user.phone}</p>
+                       )}
+                       <div className="flex items-center space-x-2 mt-1">
+                         {getRoleBadge(user.role)}
+                         {getStatusBadge(user.status)}
+                       </div>
+                       {user.userDepartments && user.userDepartments.length > 0 && (
+                         <div className="flex flex-wrap gap-1 mt-1">
+                           {user.userDepartments.map((ud, index) => (
+                             <span
+                               key={ud.id}
+                               className="text-xs px-2 py-1 rounded-full text-white"
+                               style={{ backgroundColor: ud.department.color }}
+                             >
+                               {ud.department.name}
+                             </span>
+                           ))}
+                         </div>
+                       )}
                     </div>
                   </div>
                   
