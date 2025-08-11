@@ -530,17 +530,6 @@ const Settings: React.FC = () => {
           </div>
         </div>
 
-        <div className="card">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="p-2 bg-blue-500 rounded-lg">
-              <Bell className="w-5 h-5 text-white" />
-            </div>
-            <h3 className="text-lg font-semibold text-white">Notificações</h3>
-          </div>
-          <p className="text-gray-400 mb-4">Configure suas preferências de notificação</p>
-          <button className="btn btn-secondary">Configurar</button>
-        </div>
-
         {/* Departamentos */}
         <div className="card md:col-span-2">
           <div className="flex items-center justify-between mb-4">
@@ -670,7 +659,17 @@ const Settings: React.FC = () => {
           )}
         </div>
 
-
+        {/* Notificações */}
+        <div className="card">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="p-2 bg-blue-500 rounded-lg">
+              <Bell className="w-5 h-5 text-white" />
+            </div>
+            <h3 className="text-lg font-semibold text-white">Notificações</h3>
+          </div>
+          <p className="text-gray-400 mb-4">Configure suas preferências de notificação</p>
+          <button className="btn btn-secondary">Configurar</button>
+        </div>
 
         <div className="card">
           <div className="flex items-center space-x-3 mb-4">

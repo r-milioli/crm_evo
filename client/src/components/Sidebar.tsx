@@ -44,13 +44,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
       {/* Sidebar */}
       <div className={`
-        fixed top-0 left-0 h-full w-64 bg-gray-900/40 z-50
+        fixed top-0 left-0 h-full w-64 bg-gray-900 lg:bg-gray-900/40 z-50
         transform transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         lg:translate-x-0 lg:static lg:w-64 lg:h-full lg:flex-shrink-0
       `}>
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800/40 flex-shrink-0 h-16">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 lg:border-gray-800/40 flex-shrink-0 h-16">
           <div className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
               <MessageCircle className="w-5 h-5 text-white" />
@@ -59,7 +59,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           </div>
           <button
             onClick={onClose}
-            className="lg:hidden p-1 rounded-md hover:bg-gray-900/40 text-gray-400 hover:text-white"
+            className="lg:hidden p-1 rounded-md hover:bg-gray-800 lg:hover:bg-gray-900/40 text-gray-400 hover:text-white"
           >
             <X className="w-5 h-5" />
           </button>
@@ -79,7 +79,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                   flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors
                   ${isActive 
                     ? 'bg-green-500 text-white' 
-                    : 'text-gray-300 hover:bg-gray-900/40 hover:text-white'
+                    : 'text-gray-300 hover:bg-gray-800 lg:hover:bg-gray-900/40 hover:text-white'
                   }
                 `}
                 onClick={onClose}
