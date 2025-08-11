@@ -46,6 +46,8 @@ async function isEvolutionConfigured(organizationId) {
   return !!config;
 }
 
+
+
 /**
  * Sincroniza chats da Evolution API com o sistema de conversas
  * @param {string} organizationId - ID da organização

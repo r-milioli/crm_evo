@@ -28,14 +28,19 @@ const webhookRoutes = require('./routes/webhooks');
 const dashboardRoutes = require('./routes/dashboard');
 const settingsRoutes = require('./routes/settings');
 const departmentRoutes = require('./routes/departments');
+const kanbanRoutes = require('./routes/kanbans');
+const kanbanActionRoutes = require('./routes/kanbanActions');
 
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
     origin: process.env.CLIENT_URL || "http://localhost:3000",
-    methods: ["GET", "POST"]
-  }
+    methods: ["GET", "POST"],
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"]
+  },
+  transports: ['websocket', 'polling']
 });
 
 // Prisma Client
@@ -58,8 +63,10 @@ const speedLimiter = slowDown({
 app.use(helmet());
 app.use(compression());
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:3000",
-  credentials: true
+  origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
 }));
 app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
 app.use(express.json({ limit: '10mb' }));
@@ -72,7 +79,7 @@ app.use('/uploads', express.static('uploads'));
 
 // Rotas públicas
 app.use('/api/auth', authRoutes);
-app.use('/api/webhooks', webhookRoutes);
+app.use('/api/webhooks/evolution', webhookRoutes); // Apenas o endpoint de recebimento de eventos é público
 
 // Rota de health check (pública)
 app.get('/api/health', (req, res) => {
@@ -95,33 +102,50 @@ app.use('/api/conversations', conversationRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/webhooks', webhookRoutes); // Rotas de configuração de webhook (protegidas)
+
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/departments', departmentRoutes);
+app.use('/api/kanbans', kanbanRoutes);
+app.use('/api/kanban-actions', kanbanActionRoutes);
 
 // Middleware de tratamento de erros
 app.use(errorHandler);
 
 // Socket.IO para tempo real
 io.on('connection', (socket) => {
-  logger.info(`Cliente conectado: ${socket.id}`);
+  logger.info(`✅ Cliente conectado: ${socket.id}`);
+  logger.info(`📡 Endereço do cliente: ${socket.handshake.address}`);
+  logger.info(`🌐 Headers: ${JSON.stringify(socket.handshake.headers)}`);
 
   // Juntar-se à sala da organização
   socket.on('join-organization', (organizationId) => {
     socket.join(`org-${organizationId}`);
-    logger.info(`Cliente ${socket.id} entrou na organização ${organizationId}`);
+    logger.info(`🏢 Cliente ${socket.id} entrou na organização ${organizationId}`);
+    
+    // Enviar confirmação para o cliente
+    socket.emit('organization-joined', { organizationId, success: true });
+  });
+
+  // Teste de ping
+  socket.on('ping', (data) => {
+    logger.info(`🏓 Ping recebido de ${socket.id}:`, data);
+    socket.emit('pong', { message: 'Pong recebido!', timestamp: new Date().toISOString() });
   });
 
   // Sair da sala da organização
   socket.on('leave-organization', (organizationId) => {
     socket.leave(`org-${organizationId}`);
-    logger.info(`Cliente ${socket.id} saiu da organização ${organizationId}`);
+    logger.info(`🚪 Cliente ${socket.id} saiu da organização ${organizationId}`);
   });
 
-  socket.on('disconnect', () => {
-    logger.info(`Cliente desconectado: ${socket.id}`);
+  socket.on('disconnect', (reason) => {
+    logger.info(`❌ Cliente desconectado: ${socket.id}. Motivo: ${reason}`);
   });
 });
+
+
 
 // Disponibilizar io para uso em outros módulos
 app.set('io', io);

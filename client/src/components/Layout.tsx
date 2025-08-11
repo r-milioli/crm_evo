@@ -7,17 +7,17 @@ const Layout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-black grid grid-cols-1 lg:grid-cols-[256px_1fr]">
-      {/* Sidebar */}
+    <div className="h-screen bg-black flex overflow-hidden">
+      {/* Sidebar - fixa */}
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       
-      {/* Conteúdo principal */}
-      <div className="flex flex-col">
-        {/* Header */}
+      {/* Conteúdo principal - com scroll */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header - fixo */}
         <Header onMenuClick={() => setSidebarOpen(true)} />
         
-        {/* Conteúdo da página */}
-        <main className="flex-1 p-6">
+        {/* Conteúdo da página - com scroll */}
+        <main className="flex-1 overflow-y-auto p-6">
           <Outlet />
         </main>
       </div>

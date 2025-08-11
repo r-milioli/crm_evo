@@ -27,7 +27,10 @@ model User {
   reports               Report[]
   userDepartments       UserDepartment[]
   organization          Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  webhooks              Webhook[]
+  kanbanCardActivities  KanbanCardActivity[]
+  kanbanCards           KanbanCard[]
+  kanbans               Kanban[]
+  kanbanActions         KanbanAction[]
 
   @@map("users")
 }
@@ -50,6 +53,7 @@ model Organization {
   reports       Report[]
   users         User[]
   webhooks      Webhook[]
+  kanbans       Kanban[]
 
   @@map("organizations")
 }
@@ -120,6 +124,7 @@ model Contact {
   organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   conversations   Conversation[]
   messages        Message[]
+  kanbanCards     KanbanCard[]
 
   @@unique([phoneNumber, organizationId])
   @@map("contacts")
@@ -148,6 +153,7 @@ model Conversation {
   instance       Instance           @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   messages       Message[]
+  kanbanCards    KanbanCard[]
 
   @@map("conversations")
 }
@@ -195,6 +201,7 @@ model Campaign {
   updatedAt       DateTime       @updatedAt
   createdBy       User           @relation(fields: [createdById], references: [id])
   organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  kanbanCards     KanbanCard[]
 
   @@map("campaigns")
 }
@@ -216,20 +223,125 @@ model Report {
 }
 
 model Webhook {
-  id             String       @id @default(cuid())
-  name           String
+  id             String   @id @default(cuid())
   url            String
   events         String[]
-  isActive       Boolean      @default(true)
-  secret         String?
+  isActive       Boolean  @default(true)
+  instanceName   String
   organizationId String
-  createdById    String
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  createdBy      User         @relation(fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("webhooks")
+}
+
+model Kanban {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  color          String   @default("#3B82F6")
+  isActive       Boolean  @default(true)
+  organizationId String
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  columns        KanbanColumn[]
+  cards          KanbanCard[]
+  actions        KanbanAction[]
+
+  @@map("kanbans")
+}
+
+model KanbanColumn {
+  id        String   @id @default(cuid())
+  name      String
+  color     String   @default("#6B7280")
+  order     Int
+  kanbanId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  kanban    Kanban   @relation(fields: [kanbanId], references: [id], onDelete: Cascade)
+  cards     KanbanCard[]
+  actions   KanbanAction[]
+
+  @@map("kanban_columns")
+}
+
+model KanbanCard {
+  id           String        @id @default(cuid())
+  title        String
+  description  String?
+  order        Int
+  columnId     String
+  kanbanId     String
+  contactId    String?
+  conversationId String?
+  campaignId   String?
+  createdById  String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  column       KanbanColumn  @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  kanban       Kanban        @relation(fields: [kanbanId], references: [id], onDelete: Cascade)
+  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  campaign     Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdBy    User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  activities   KanbanCardActivity[]
+  actionExecutions KanbanActionExecution[]
+
+  @@map("kanban_cards")
+}
+
+model KanbanCardActivity {
+  id        String      @id @default(cuid())
+  action    String      // "created", "moved", "updated", "deleted"
+  details   Json?
+  cardId    String
+  userId    String
+  createdAt DateTime    @default(now())
+  card      KanbanCard  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("kanban_card_activities")
+}
+
+model KanbanAction {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  type        ActionType
+  trigger     ActionTrigger
+  conditions  Json?         // Condições para disparar a ação
+  config      Json          // Configuração da ação (mensagem, destinatários, etc.)
+  isActive    Boolean       @default(true)
+  columnId    String
+  kanbanId    String
+  createdById String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  column      KanbanColumn  @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  kanban      Kanban        @relation(fields: [kanbanId], references: [id], onDelete: Cascade)
+  createdBy   User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  executions  KanbanActionExecution[]
+
+  @@map("kanban_actions")
+}
+
+model KanbanActionExecution {
+  id        String       @id @default(cuid())
+  actionId  String
+  cardId    String
+  status    ExecutionStatus
+  result    Json?        // Resultado da execução
+  error     String?      // Erro se houver
+  executedAt DateTime    @default(now())
+  action    KanbanAction @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  card      KanbanCard   @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@map("kanban_action_executions")
 }
 
 enum UserRole {
@@ -305,4 +417,29 @@ enum ReportType {
   CONVERSATIONS
   CONTACTS
   CUSTOM
+}
+
+enum ActionType {
+  SEND_MESSAGE      // Enviar mensagem via Evolution API
+  NOTIFY_USER       // Notificar usuário interno
+  CREATE_TASK       // Criar tarefa
+  UPDATE_STATUS     // Atualizar status
+  SEND_EMAIL        // Enviar email
+  WEBHOOK_CALL      // Chamar webhook externo
+}
+
+enum ActionTrigger {
+  ON_ENTER_COLUMN   // Quando card entra na coluna
+  ON_LEAVE_COLUMN   // Quando card sai da coluna
+  ON_CARD_CREATE    // Quando card é criado
+  ON_TIME_DELAY     // Após X tempo na coluna
+  ON_CONDITION      // Quando condição é atendida
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
 }

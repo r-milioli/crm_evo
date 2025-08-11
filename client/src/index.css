@@ -99,94 +99,174 @@
     @apply border border-gray-800/50 text-white hover:bg-gray-900/40;
   }
 
-  /* Status badges */
   .badge-success {
-    @apply bg-green-500 text-white;
+    @apply bg-green-600 text-white hover:bg-green-700;
   }
 
   .badge-warning {
-    @apply bg-yellow-500 text-white;
+    @apply bg-yellow-600 text-white hover:bg-yellow-700;
   }
 
   .badge-error {
-    @apply bg-red-500 text-white;
+    @apply bg-red-600 text-white hover:bg-red-700;
   }
 
   .badge-info {
-    @apply bg-blue-500 text-white;
+    @apply bg-blue-600 text-white hover:bg-blue-700;
   }
 
-  /* Loading spinner */
+  /* Spinner */
   .spinner {
-    @apply animate-spin rounded-full border-2 border-gray-800/50 border-t-green-500;
+    @apply animate-spin rounded-full border-2 border-gray-300 border-t-green-500;
   }
 
-  /* Scrollbar customizada */
+  /* Scrollbar */
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: #374151 #000000;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
+    @apply w-2 h-2;
   }
 
   .scrollbar-thin::-webkit-scrollbar-track {
-    background: #000000;
+    @apply bg-gray-800 rounded-full;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: #374151;
-    border-radius: 3px;
+    @apply bg-gray-600 rounded-full hover:bg-gray-500;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: #4b5563;
+    @apply bg-gray-400;
   }
 
-  /* Animações de entrada */
+  /* Animations */
   .fade-in {
-    @apply animate-fade-in;
+    @apply animate-in fade-in duration-300;
   }
 
   .slide-up {
-    @apply animate-slide-up;
+    @apply animate-in slide-in-from-bottom-4 duration-300;
   }
 
   .slide-down {
-    @apply animate-slide-down;
+    @apply animate-in slide-in-from-top-4 duration-300;
   }
 
-  /* Efeitos de hover */
+  @keyframes slideDown {
+    from { transform: translateY(-10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  .slide-in {
+    @apply animate-in slide-in-from-left-4 duration-300;
+  }
+
+  @keyframes slideIn {
+    from { transform: translateX(-10px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  .slide-out {
+    @apply animate-out slide-out-to-right-4 duration-300;
+  }
+
+  @keyframes slideOut {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(10px); opacity: 0; }
+  }
+
+  /* Hover effects */
   .hover-glow:hover {
-    @apply shadow-lg transition-shadow duration-300;
+    @apply shadow-lg shadow-green-500/20;
   }
 
-  /* Gradientes */
+  /* Gradients */
   .gradient-whatsapp {
-    background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+    @apply bg-gradient-to-br from-green-500 to-green-600;
   }
 
   .gradient-dark {
-    background: linear-gradient(135deg, #000000 0%, #1A1A1A 100%);
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #1a1a1a 100%);
   }
-}
 
-@layer utilities {
-  /* Utilitários personalizados */
+  /* Text utilities */
   .text-balance {
     text-wrap: balance;
   }
 
+  /* Background patterns */
   .bg-grid {
     background-image: 
-      linear-gradient(rgba(37, 211, 102, 0.1) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(37, 211, 102, 0.1) 1px, transparent 1px);
+      linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px);
     background-size: 20px 20px;
   }
 
   .bg-dots {
-    background-image: radial-gradient(circle, rgba(37, 211, 102, 0.2) 1px, transparent 1px);
+    background-image: radial-gradient(circle, rgba(255,255,255,.1) 1px, transparent 1px);
     background-size: 20px 20px;
+  }
+
+  /* Kanban specific styles */
+  .line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .line-clamp-3 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+
+  /* Drag and drop styles */
+  .drag-over {
+    @apply border-green-500 bg-green-900/20;
+  }
+
+  .dragging {
+    @apply opacity-50 rotate-2 scale-105;
+  }
+
+  /* Kanban column styles */
+  .kanban-column {
+    @apply min-h-[500px] max-h-[calc(100vh-300px)] overflow-y-auto;
+  }
+
+  .kanban-card {
+    @apply transition-all duration-200 ease-in-out;
+  }
+
+  .kanban-card:hover {
+    @apply transform -translate-y-1 shadow-lg;
+  }
+
+  /* Custom scrollbar for kanban */
+  .kanban-scrollbar::-webkit-scrollbar {
+    @apply w-1;
+  }
+
+  .kanban-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .kanban-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-gray-600 rounded-full;
+  }
+
+  .kanban-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-500;
   }
 }

@@ -1,12 +1,15 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const logger = require('../utils/logger');
+const webhookService = require('../services/webhookService');
+const { requireRole } = require('../middleware/auth');
+
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// Webhook para receber eventos da Evolution API
-router.post('/evolution/:instanceName', async (req, res) => {
+// Webhook para receber eventos da Evolution API (rota pública)
+router.post('/:instanceName', async (req, res) => {
   try {
     const { instanceName } = req.params;
     const eventData = req.body;
@@ -69,6 +72,73 @@ router.post('/evolution/:instanceName', async (req, res) => {
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
+
+
+
+// Configurar webhook para uma instância (rota protegida)
+router.post('/configure/:instanceName', requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, res) => {
+  try {
+    const { instanceName } = req.params;
+    const { organizationId } = req.user;
+
+
+    logger.info(`Configurando webhook para instância ${instanceName}`);
+
+    // Verificar se a instância existe
+    const instance = await prisma.instance.findFirst({
+      where: {
+        instanceName: instanceName,
+        organizationId: organizationId
+      }
+    });
+
+    if (!instance) {
+      return res.status(404).json({
+        success: false,
+        error: 'Instância não encontrada'
+      });
+    }
+
+    // Configurar webhook
+    const result = await webhookService.configureWebhook(instanceName, organizationId);
+    
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    logger.error('Erro ao configurar webhook:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// Verificar status do webhook de uma instância (rota protegida)
+router.get('/status/:instanceName', requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, res) => {
+  try {
+    const { instanceName } = req.params;
+    const { organizationId } = req.user;
+
+    logger.info(`Verificando status do webhook para instância ${instanceName}`);
+
+    // Verificar status do webhook
+    const status = await webhookService.checkWebhookStatus(instanceName, organizationId);
+    
+    res.json({
+      success: true,
+      data: status
+    });
+  } catch (error) {
+    logger.error('Erro ao verificar status do webhook:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro interno do servidor' 
+    });
+  }
+});
+
 
 // Processar atualização de conexão
 async function handleConnectionUpdate(instance, data) {
@@ -172,7 +242,7 @@ async function handleMessageUpsert(instance, data) {
           contactId: contact.id,
           instanceId: instance.id,
           organizationId: instance.organizationId,
-          createdById: instance.organizationId // Usar ID da organização como criador
+          createdById: null // Deixar null para webhooks automáticos
         }
       });
     }

@@ -12,6 +12,8 @@ import Instances from './pages/Instances';
 import Conversations from './pages/Conversations';
 import Contacts from './pages/Contacts';
 import Campaigns from './pages/Campaigns';
+import Kanbans from './pages/Kanbans';
+import KanbanView from './pages/KanbanView';
 import Reports from './pages/Reports';
 import Users from './pages/Users';
 import Settings from './pages/Settings';
@@ -145,6 +147,8 @@ function App() {
               <Route path="conversations" element={<Conversations />} />
               <Route path="contacts" element={<Contacts />} />
               <Route path="campaigns" element={<Campaigns />} />
+              <Route path="kanbans" element={<Kanbans />} />
+              <Route path="kanbans/:id" element={<KanbanView />} />
               <Route path="reports" element={<Reports />} />
               <Route path="users" element={<Users />} />
               <Route path="settings" element={<Settings />} />

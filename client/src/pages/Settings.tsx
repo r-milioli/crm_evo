@@ -8,6 +8,8 @@ import instancesService, { Instance } from '../services/instancesService';
 import conversationsService from '../services/conversationsService';
 import DepartmentModal from '../components/DepartmentModal';
 
+
+
 const Settings: React.FC = () => {
   const queryClient = useQueryClient();
   const [evolutionConfig, setEvolutionConfig] = useState({
@@ -173,15 +175,15 @@ const Settings: React.FC = () => {
 
   const handleEvolutionConfig = async () => {
     if (!evolutionConfig.baseUrl || !evolutionConfig.apiKey) {
-      toast.error('Preencha todos os campos');
+      toast.error('Preencha todos os campos obrigatórios');
       return;
     }
 
-    setEvolutionConfig(prev => ({ ...prev, isLoading: true }));
-    saveConfigMutation.mutate({
-      baseUrl: evolutionConfig.baseUrl,
-      apiKey: evolutionConfig.apiKey
-    });
+          setEvolutionConfig(prev => ({ ...prev, isLoading: true }));
+      saveConfigMutation.mutate({
+        baseUrl: evolutionConfig.baseUrl,
+        apiKey: evolutionConfig.apiKey
+      });
   };
 
   const testConnection = async () => {
@@ -389,6 +391,23 @@ const Settings: React.FC = () => {
                   Chave de API da Evolution API
                 </p>
               </div>
+            </div>
+
+            <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+              <div className="flex items-center space-x-2 mb-2">
+                <Globe className="w-4 h-4 text-blue-400" />
+                <label className="text-sm font-medium text-gray-300">
+                  URL do Webhook (Gerada Automaticamente)
+                </label>
+              </div>
+              <div className="bg-gray-900 p-3 rounded border border-gray-600">
+                <code className="text-sm text-green-400 break-all">
+                  {window.location.origin}/api/webhooks/evolution/&#123;instancia&#125;
+                </code>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                O sistema gera automaticamente a URL do webhook. A Evolution API enviará eventos para esta URL.
+              </p>
             </div>
 
             <div className="flex items-center space-x-4">
@@ -650,6 +669,8 @@ const Settings: React.FC = () => {
             </div>
           )}
         </div>
+
+
 
         <div className="card">
           <div className="flex items-center space-x-3 mb-4">

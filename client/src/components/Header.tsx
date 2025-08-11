@@ -10,7 +10,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const { user, logout } = useAuthStore();
 
   return (
-    <header className="bg-gray-900/40 border-b border-gray-800/40 px-4 py-3">
+    <header className="bg-gray-900/40 border-b border-gray-800/40 px-4 py-3 flex-shrink-0 h-16">
       <div className="flex items-center justify-between">
         {/* Menu button */}
         <button

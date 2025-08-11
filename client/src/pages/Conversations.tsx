@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Search, 
   MessageCircle, 
@@ -7,23 +7,25 @@ import {
   AlertTriangle,
   User,
   Phone,
-  Calendar,
-  TrendingUp,
   Bell,
   Archive,
   RefreshCw,
-  Download,
-  ChevronDown
+  Download
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+
 import { Conversation, ConversationFilters, ConversationStatus, Priority } from '../types';
 import conversationsService, { ConversationStats } from '../services/conversationsService';
 import instancesService, { Instance } from '../services/instancesService';
 import ConversationModal from '../components/ConversationModal';
 import ConversationFiltersComponent from '../components/ConversationFilters';
 import EvolutionInfoPanel from '../components/EvolutionInfoPanel';
+import NewMessageNotification from '../components/NewMessageNotification';
 import { useAuthStore } from '../store/authStore';
+import { useApi } from '../services/api';
 import { cn } from '../utils/cn';
+
+
 
 const Conversations: React.FC = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -35,75 +37,78 @@ const Conversations: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [users, setUsers] = useState<any[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstance, setSelectedInstance] = useState<string>('');
   const [isSyncing, setIsSyncing] = useState(false);
-  const [showInstanceSelector, setShowInstanceSelector] = useState(false);
   const [showEvolutionPanel, setShowEvolutionPanel] = useState(false);
   
+  // Notification states
+  const [notifications, setNotifications] = useState<Array<{id: string, message: string}>>([]);
+  
   const { user } = useAuthStore();
+  const api = useApi();
 
+  // Debug: Log quando usuário muda
   useEffect(() => {
-    loadConversations();
-    loadStats();
-    loadUsers();
-    loadInstances();
-  }, [filters, currentPage]);
+    console.log('👤 Estado do usuário:', {
+      user: !!user,
+      name: user?.name,
+      organizationId: user?.organizationId,
+      email: user?.email
+    });
+  }, [user]);
 
-  useEffect(() => {
-    // Atualizar conversas a cada 30 segundos
-    const interval = setInterval(() => {
-      loadConversations();
-      loadStats();
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadConversations = async () => {
-    setIsLoading(true);
-    try {
-      const response = await conversationsService.getConversations(filters, currentPage, 20);
-      setConversations(response.data);
-      setTotalPages(response.pagination.pages);
-    } catch (error) {
-      console.error('Erro ao carregar conversas:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadStats = async () => {
+  // Carregar estatísticas
+  const loadStats = useCallback(async () => {
     try {
       const statsData = await conversationsService.getConversationStats();
       setStats(statsData);
     } catch (error) {
       console.error('Erro ao carregar estatísticas:', error);
     }
-  };
+  }, []);
 
-  const loadUsers = async () => {
+
+
+
+
+  // Carregar conversas
+  const loadConversations = useCallback(async () => {
     try {
-      // Implementar carregamento de usuários
-      // const response = await usersService.getUsers();
-      // setUsers(response);
+      setIsLoading(true);
+      const response = await conversationsService.getConversations(filters, currentPage, 20);
+      setConversations(response.data);
+      setTotalPages(response.pagination.pages);
     } catch (error) {
-      console.error('Erro ao carregar usuários:', error);
+      console.error('Erro ao carregar conversas:', error);
+      toast.error('Erro ao carregar conversas');
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, [currentPage, filters]);
 
-  const loadInstances = async () => {
+  // Carregar instâncias
+  const loadInstances = useCallback(async () => {
     try {
-      const response = await instancesService.getInstances();
-      setInstances(response);
-      // Selecionar a primeira instância por padrão se não houver nenhuma selecionada
-      if (response.length > 0 && !selectedInstance) {
-        setSelectedInstance(response[0].id);
-      }
+      const instancesData = await instancesService.getInstances();
+      setInstances(instancesData);
     } catch (error) {
       console.error('Erro ao carregar instâncias:', error);
     }
+  }, []);
+
+  // Carregar dados iniciais
+  useEffect(() => {
+    loadConversations();
+    loadStats();
+    loadInstances();
+  }, [filters, currentPage, loadConversations, loadInstances, loadStats]);
+
+
+
+  // Selecionar instância
+  const handleInstanceChange = async (instanceId: string) => {
+    setSelectedInstance(instanceId);
   };
 
   const handleSyncEvolution = async () => {
@@ -235,12 +240,73 @@ const Conversations: React.FC = () => {
           <p className="text-gray-400">Gerencie suas conversas do WhatsApp</p>
         </div>
         <div className="flex items-center space-x-2">
+
+
+          {/* Botão de Configurar Webhook */}
+          {selectedInstance && (
+            <button
+              onClick={async () => {
+                const instance = instances.find(inst => inst.id === selectedInstance);
+                if (instance) {
+                  try {
+                    console.log('🔧 Configurando webhook...');
+                    const response = await api.post(`/webhooks/configure/${instance.instanceName}`);
+                    
+                    console.log('✅ Webhook configurado:', response.data);
+                    
+                    if (response.data.success) {
+                      toast.success(`Webhook configurado com sucesso!`);
+                    } else {
+                      toast.error(`Erro: ${response.data.error}`);
+                    }
+                  } catch (error: any) {
+                    console.error('Erro ao configurar webhook:', error);
+                    toast.error(`Erro ao configurar webhook: ${error.response?.data?.error || 'Erro desconhecido'}`);
+                  }
+                }
+              }}
+              className="btn btn-sm btn-success"
+              title="Configurar Webhook"
+            >
+              🔗 Webhook
+            </button>
+          )}
+
+          {/* Botão de Status Webhook */}
+          {selectedInstance && (
+            <button
+              onClick={async () => {
+                const instance = instances.find(inst => inst.id === selectedInstance);
+                if (instance) {
+                  try {
+                    console.log('🔍 Verificando status do webhook...');
+                    const response = await api.get(`/webhooks/status/${instance.instanceName}`);
+                    console.log('📊 Status do webhook:', response.data);
+                    
+                    if (response.data.success) {
+                      toast.success(`Webhook: ${JSON.stringify(response.data.data)}`);
+                    } else {
+                      toast.error(`Erro: ${response.data.error}`);
+                    }
+                  } catch (error: any) {
+                    console.error('Erro ao verificar status do webhook:', error);
+                    toast.error(`Erro ao verificar webhook: ${error.response?.data?.error || 'Erro desconhecido'}`);
+                  }
+                }
+              }}
+              className="btn btn-sm btn-warning"
+              title="Verificar Status Webhook"
+            >
+              🔍 Webhook
+            </button>
+          )}
+          
           {/* Seletor de Instância e Botão de Sincronização */}
           <div className="relative">
             <div className="flex items-center space-x-2">
               <select
                 value={selectedInstance}
-                onChange={(e) => setSelectedInstance(e.target.value)}
+                onChange={(e) => handleInstanceChange(e.target.value)}
                 className="select select-sm bg-gray-700 border-gray-600 text-white"
                 disabled={isSyncing || instances.length === 0}
               >
@@ -259,32 +325,32 @@ const Conversations: React.FC = () => {
               >
                 <Download className={cn('w-4 h-4', isSyncing && 'animate-spin')} />
                 {isSyncing ? 'Sincronizando...' : 'Sincronizar'}
+              </button>
+            </div>
+          </div>
+          <button
+            onClick={loadConversations}
+            disabled={isLoading}
+            className="btn btn-ghost btn-sm"
+            title="Atualizar"
+          >
+            <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />
           </button>
+          <button
+            onClick={() => setShowEvolutionPanel(!showEvolutionPanel)}
+            className="btn btn-secondary btn-sm"
+            title="Evolution API Info"
+          >
+            <MessageCircle className="w-4 h-4 mr-1" />
+            {showEvolutionPanel ? 'Ocultar' : 'Mostrar'} Info
+          </button>
+          <ConversationFiltersComponent
+            filters={filters}
+            onFiltersChange={handleFiltersChange}
+            users={[]} // Passando um array vazio pois loadUsers foi removido
+            instances={instances}
+          />
         </div>
-      </div>
-                   <button
-           onClick={loadConversations}
-           disabled={isLoading}
-           className="btn btn-ghost btn-sm"
-           title="Atualizar"
-         >
-           <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />
-         </button>
-         <button
-           onClick={() => setShowEvolutionPanel(!showEvolutionPanel)}
-           className="btn btn-secondary btn-sm"
-           title="Evolution API Info"
-         >
-           <MessageCircle className="w-4 h-4 mr-1" />
-           {showEvolutionPanel ? 'Ocultar' : 'Mostrar'} Info
-         </button>
-         <ConversationFiltersComponent
-           filters={filters}
-           onFiltersChange={handleFiltersChange}
-           users={users}
-           instances={instances}
-        />
-      </div>
       </div>
 
       {/* Estatísticas */}
@@ -486,6 +552,17 @@ const Conversations: React.FC = () => {
         </div>
       )}
 
+      {/* Notificações de novas mensagens */}
+      {notifications.map((notification) => (
+        <NewMessageNotification
+          key={notification.id}
+          message={notification.message}
+          onClose={() => {
+            setNotifications(prev => prev.filter(n => n.id !== notification.id));
+          }}
+        />
+      ))}
+
       {/* Modal de conversa */}
       <ConversationModal
         conversation={selectedConversation}
@@ -496,6 +573,14 @@ const Conversations: React.FC = () => {
         }}
         onUpdate={handleConversationUpdate}
       />
+
+      {/* Painel de informações da Evolution API */}
+      {showEvolutionPanel && (
+        <EvolutionInfoPanel
+          selectedInstance={selectedInstance}
+          instances={instances}
+        />
+      )}
     </div>
   );
 };

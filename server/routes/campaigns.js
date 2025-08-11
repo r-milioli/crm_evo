@@ -1,103 +1,58 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { PrismaClient } = require('@prisma/client');
-const logger = require('../utils/logger');
 const { requireRole } = require('../middleware/auth');
+const campaignsService = require('../services/campaignsService');
+const logger = require('../utils/logger');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
-// Validações
+// Validação para criação/atualização de campanhas
 const campaignValidation = [
-  body('name').isLength({ min: 2, max: 100 }).withMessage('Nome deve ter entre 2 e 100 caracteres'),
-  body('messageTemplate').isLength({ min: 1, max: 4096 }).withMessage('Mensagem deve ter entre 1 e 4096 caracteres'),
-  body('status').isIn(['DRAFT', 'SCHEDULED', 'RUNNING', 'COMPLETED', 'CANCELLED']).withMessage('Status inválido')
+  body('name').notEmpty().withMessage('Nome da campanha é obrigatório'),
+  body('messageTemplate').notEmpty().withMessage('Template da mensagem é obrigatório'),
+  body('targetContacts').isArray().withMessage('Contatos alvo deve ser um array'),
+  body('scheduledAt').optional().isISO8601().withMessage('Data de agendamento deve ser válida')
 ];
 
 // Listar campanhas
-router.get('/', async (req, res) => {
+router.get('/', requireRole(['ADMIN', 'MANAGER', 'OPERATOR']), async (req, res) => {
   try {
-    const { page = 1, limit = 20, status } = req.query;
-    const skip = (page - 1) * limit;
-    const organizationId = req.user.organizationId;
-
-    const where = {
-      organizationId
-    };
-
-    if (status) {
-      where.status = status;
+    const { status, search } = req.query;
+    const filters = { status, search };
+    
+    const result = await campaignsService.listCampaigns(req.user.organizationId, filters);
+    
+    if (result.success) {
+      res.json(result.data);
+    } else {
+      res.status(400).json({ error: result.error });
     }
-
-    const [campaigns, total] = await Promise.all([
-      prisma.campaign.findMany({
-        where,
-        skip: parseInt(skip),
-        take: parseInt(limit),
-        orderBy: { createdAt: 'desc' },
-        include: {
-          createdBy: {
-            select: {
-              id: true,
-              name: true
-            }
-          }
-        }
-      }),
-      prisma.campaign.count({ where })
-    ]);
-
-    res.json({
-      campaigns,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / limit)
-      }
-    });
-
   } catch (error) {
     logger.error('Erro ao listar campanhas:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
-// Buscar campanha por ID
-router.get('/:id', async (req, res) => {
+// Obter campanha por ID
+router.get('/:id', requireRole(['ADMIN', 'MANAGER', 'OPERATOR']), async (req, res) => {
   try {
     const { id } = req.params;
-    const organizationId = req.user.organizationId;
-
-    const campaign = await prisma.campaign.findFirst({
-      where: {
-        id,
-        organizationId
-      },
-      include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      }
-    });
-
-    if (!campaign) {
-      return res.status(404).json({ error: 'Campanha não encontrada' });
+    
+    const result = await campaignsService.getCampaign(id, req.user.organizationId);
+    
+    if (result.success) {
+      res.json(result.data);
+    } else {
+      res.status(404).json({ error: result.error });
     }
-
-    res.json(campaign);
-
   } catch (error) {
-    logger.error('Erro ao buscar campanha:', error);
+    logger.error('Erro ao obter campanha:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
-// Criar campanha
-router.post('/', requireRole(['ADMIN', 'SUPER_ADMIN']), campaignValidation, async (req, res) => {
+// Criar nova campanha
+router.post('/', requireRole(['ADMIN', 'MANAGER']), campaignValidation, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -107,44 +62,17 @@ router.post('/', requireRole(['ADMIN', 'SUPER_ADMIN']), campaignValidation, asyn
       });
     }
 
-    const { 
-      name, 
-      description, 
-      messageTemplate, 
-      targetContacts, 
-      scheduledAt 
-    } = req.body;
-
-    const organizationId = req.user.organizationId;
-
-    // Criar campanha
-    const campaign = await prisma.campaign.create({
-      data: {
-        name,
-        description,
-        messageTemplate,
-        targetContacts,
-        scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
-        organizationId,
-        createdById: req.user.id
-      },
-      include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      }
-    });
-
-    logger.info(`Campanha criada: ${campaign.id} por ${req.user.email}`);
-
-    res.status(201).json({
-      message: 'Campanha criada com sucesso',
-      campaign
-    });
-
+    const result = await campaignsService.createCampaign(
+      req.body, 
+      req.user.organizationId, 
+      req.user.id
+    );
+    
+    if (result.success) {
+      res.status(201).json(result.data);
+    } else {
+      res.status(400).json({ error: result.error });
+    }
   } catch (error) {
     logger.error('Erro ao criar campanha:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
@@ -152,7 +80,7 @@ router.post('/', requireRole(['ADMIN', 'SUPER_ADMIN']), campaignValidation, asyn
 });
 
 // Atualizar campanha
-router.put('/:id', requireRole(['ADMIN', 'SUPER_ADMIN']), campaignValidation, async (req, res) => {
+router.put('/:id', requireRole(['ADMIN', 'MANAGER']), campaignValidation, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -163,57 +91,18 @@ router.put('/:id', requireRole(['ADMIN', 'SUPER_ADMIN']), campaignValidation, as
     }
 
     const { id } = req.params;
-    const { 
-      name, 
-      description, 
-      messageTemplate, 
-      targetContacts, 
-      scheduledAt,
-      status 
-    } = req.body;
-
-    const organizationId = req.user.organizationId;
-
-    // Verificar se a campanha existe
-    const existingCampaign = await prisma.campaign.findFirst({
-      where: {
-        id,
-        organizationId
-      }
-    });
-
-    if (!existingCampaign) {
-      return res.status(404).json({ error: 'Campanha não encontrada' });
+    
+    const result = await campaignsService.updateCampaign(
+      id, 
+      req.body, 
+      req.user.organizationId
+    );
+    
+    if (result.success) {
+      res.json(result.data);
+    } else {
+      res.status(400).json({ error: result.error });
     }
-
-    // Atualizar campanha
-    const campaign = await prisma.campaign.update({
-      where: { id },
-      data: {
-        name,
-        description,
-        messageTemplate,
-        targetContacts,
-        scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
-        status
-      },
-      include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      }
-    });
-
-    logger.info(`Campanha atualizada: ${campaign.id} por ${req.user.email}`);
-
-    res.json({
-      message: 'Campanha atualizada com sucesso',
-      campaign
-    });
-
   } catch (error) {
     logger.error('Erro ao atualizar campanha:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
@@ -221,36 +110,62 @@ router.put('/:id', requireRole(['ADMIN', 'SUPER_ADMIN']), campaignValidation, as
 });
 
 // Excluir campanha
-router.delete('/:id', requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, res) => {
+router.delete('/:id', requireRole(['ADMIN', 'MANAGER']), async (req, res) => {
   try {
     const { id } = req.params;
-    const organizationId = req.user.organizationId;
-
-    // Verificar se a campanha existe
-    const campaign = await prisma.campaign.findFirst({
-      where: {
-        id,
-        organizationId
-      }
-    });
-
-    if (!campaign) {
-      return res.status(404).json({ error: 'Campanha não encontrada' });
+    
+    const result = await campaignsService.deleteCampaign(id, req.user.organizationId);
+    
+    if (result.success) {
+      res.json({ message: result.message });
+    } else {
+      res.status(400).json({ error: result.error });
     }
-
-    // Excluir campanha
-    await prisma.campaign.delete({
-      where: { id }
-    });
-
-    logger.info(`Campanha ${id} excluída por ${req.user.email}`);
-
-    res.json({
-      message: 'Campanha excluída com sucesso'
-    });
-
   } catch (error) {
     logger.error('Erro ao excluir campanha:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Executar campanha
+router.post('/:id/execute', requireRole(['ADMIN', 'MANAGER']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { instanceName } = req.body;
+    
+    if (!instanceName) {
+      return res.status(400).json({ error: 'Nome da instância é obrigatório' });
+    }
+    
+    const result = await campaignsService.executeCampaign(
+      id, 
+      req.user.organizationId, 
+      instanceName
+    );
+    
+    if (result.success) {
+      res.json(result.data);
+    } else {
+      res.status(400).json({ error: result.error });
+    }
+  } catch (error) {
+    logger.error('Erro ao executar campanha:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Obter estatísticas das campanhas
+router.get('/stats/overview', requireRole(['ADMIN', 'MANAGER']), async (req, res) => {
+  try {
+    const result = await campaignsService.getCampaignStats(req.user.organizationId);
+    
+    if (result.success) {
+      res.json(result.data);
+    } else {
+      res.status(400).json({ error: result.error });
+    }
+  } catch (error) {
+    logger.error('Erro ao obter estatísticas das campanhas:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });

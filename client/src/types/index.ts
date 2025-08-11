@@ -41,7 +41,6 @@ export interface Instance {
   description?: string;
   status: InstanceStatus;
   qrCode?: string;
-  webhookUrl?: string;
   webhookEvents: string[];
   settings?: any;
   organizationId: string;
@@ -293,7 +292,6 @@ export interface CreateInstanceData {
   name: string;
   instanceName: string;
   description?: string;
-  webhookUrl?: string;
   webhookEvents?: string[];
 }
 

@@ -6,6 +6,7 @@ const logger = require('../utils/logger');
 const { requireRole } = require('../middleware/auth');
 const { getEvolutionConfig } = require('../utils/evolutionConfig');
 
+
 const router = express.Router();
 const prisma = new PrismaClient();
 
@@ -184,7 +185,7 @@ router.get('/', async (req, res) => {
                   status: status,
                   connectionStatus: instance.connectionStatus, // Incluir o connectionStatus original
                   qrCode: instance.qrcode,
-                  webhookUrl: null,
+
                   webhookEvents: [],
                   settings: instance,
                   organizationId: req.user.organizationId,
@@ -359,7 +360,7 @@ router.get('/sync', async (req, res) => {
          description: `Instância da Evolution API - ${instance.name}`,
          status: instance.connectionStatus || 'DISCONNECTED',
          qrCode: instance.qrcode,
-         webhookUrl: null,
+         
          webhookEvents: [],
          settings: instance,
          organizationId: req.user.organizationId,
@@ -457,7 +458,7 @@ router.post('/', requireRole(['ADMIN', 'SUPER_ADMIN']), instanceValidation, asyn
       });
     }
 
-    const { name, instanceName, description, webhookUrl, webhookEvents } = req.body;
+    const { name, instanceName, description, webhookEvents } = req.body;
 
     // Verificar se o nome da instância já existe
     const existingInstance = await prisma.instance.findUnique({
@@ -488,8 +489,7 @@ router.post('/', requireRole(['ADMIN', 'SUPER_ADMIN']), instanceValidation, asyn
     try {
       logger.info('Criando instância na Evolution API:', {
         instanceName,
-        baseUrl: evolutionConfig.baseUrl,
-        hasWebhook: !!webhookUrl
+        baseUrl: evolutionConfig.baseUrl
       });
 
              const requestData = {
@@ -498,12 +498,10 @@ router.post('/', requireRole(['ADMIN', 'SUPER_ADMIN']), instanceValidation, asyn
          integration: "WHATSAPP-BAILEYS"
        };
 
-       // Adicionar webhook apenas se fornecido
-       if (webhookUrl) {
-         requestData.webhook = `${process.env.API_BASE_URL || 'http://localhost:3001'}/api/webhooks/evolution/${instanceName}`;
-         requestData.webhookByEvents = webhookEvents || false;
-         requestData.events = webhookEvents || ['messages.upsert', 'connection.update'];
-       }
+       // Configurar webhook automaticamente
+       requestData.webhook = `${process.env.API_BASE_URL || 'http://localhost:3001'}/api/webhooks/evolution/${instanceName}`;
+       requestData.webhookByEvents = webhookEvents || false;
+       requestData.events = webhookEvents || ['messages.upsert', 'connection.update'];
 
       logger.info('Dados da requisição:', requestData);
       logger.info('URL da requisição:', `${evolutionConfig.baseUrl}/instance/create`);
@@ -583,7 +581,6 @@ router.post('/', requireRole(['ADMIN', 'SUPER_ADMIN']), instanceValidation, asyn
         name,
         instanceName,
         description,
-        webhookUrl,
         webhookEvents: webhookEvents || ['messages.upsert', 'connection.update'],
         organizationId: req.user.organizationId
       }
@@ -614,7 +611,7 @@ router.put('/:id', requireRole(['ADMIN', 'SUPER_ADMIN']), instanceValidation, as
     }
 
     const { id } = req.params;
-    const { name, description, webhookUrl, webhookEvents } = req.body;
+    const { name, description, webhookEvents } = req.body;
 
     // Verificar se a instância existe e pertence à organização
     const existingInstance = await prisma.instance.findFirst({
@@ -634,7 +631,6 @@ router.put('/:id', requireRole(['ADMIN', 'SUPER_ADMIN']), instanceValidation, as
       data: {
         name,
         description,
-        webhookUrl,
         webhookEvents: webhookEvents || ['messages.upsert', 'connection.update']
       }
     });
@@ -800,11 +796,14 @@ router.post('/:id/connect', requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, r
 
       logger.info(`QR Code gerado para instância ${instance.instanceName}`);
 
+
+
       res.json({
         message: 'QR Code gerado com sucesso',
         qrCode,
         status: qrCode ? 'QRCODE' : 'CONNECTING',
-        instanceName: instance.instanceName
+        instanceName: instance.instanceName,
+
       });
 
     } catch (evolutionError) {
