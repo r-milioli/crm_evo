@@ -83,6 +83,8 @@ export interface Conversation {
   priority: Priority;
   tags: string[];
   notes?: string;
+  externalId?: string;
+  metadata?: any;
   organizationId: string;
   contactId: string;
   contact: Contact;
@@ -101,7 +103,7 @@ export interface Conversation {
   };
 }
 
-export type ConversationStatus = 'OPEN' | 'IN_PROGRESS' | 'CLOSED' | 'WAITING';
+export type ConversationStatus = 'OPEN' | 'IN_PROGRESS' | 'CLOSED' | 'WAITING' | 'ARCHIVED';
 export type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 
 // Tipos de mensagem
@@ -273,6 +275,7 @@ export interface ConversationFilters {
   assignedTo?: string;
   search?: string;
   instanceId?: string;
+  period?: string;
 }
 
 export interface ContactFilters {

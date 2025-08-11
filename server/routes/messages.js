@@ -11,7 +11,7 @@ const prisma = new PrismaClient();
 
 // Validações
 const sendMessageValidation = [
-  body('phoneNumber').isMobilePhone('pt-BR').withMessage('Número de telefone inválido'),
+  body('phoneNumber').notEmpty().withMessage('Número de telefone é obrigatório'),
   body('content').isLength({ min: 1, max: 4096 }).withMessage('Mensagem deve ter entre 1 e 4096 caracteres'),
   body('type').isIn(['TEXT', 'IMAGE', 'AUDIO', 'VIDEO', 'DOCUMENT']).withMessage('Tipo de mensagem inválido')
 ];
@@ -156,7 +156,10 @@ router.post('/send', sendMessageValidation, async (req, res) => {
     try {
       evolutionResponse = await axios.post(
         `${evolutionConfig.baseUrl}/message/sendText/${instance.instanceName}`,
-        evolutionPayload,
+        {
+          number: phoneNumber + '@s.whatsapp.net',
+          text: content
+        },
         {
           headers: {
             'apikey': evolutionConfig.apiKey,

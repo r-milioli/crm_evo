@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,67 +8,61 @@ datasource db {
 }
 
 model User {
-  id             String   @id @default(cuid())
-  email          String   @unique
-  name           String
-  password       String
-  role           UserRole @default(OPERATOR)
-  status         UserStatus @default(ACTIVE)
-  lastLogin      DateTime?
-  phone          String?
-  avatar         String?
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  // Relacionamentos
-  assignedConversations Conversation[] @relation("AssignedOperator")
-  createdConversations  Conversation[] @relation("CreatedBy")
-  messages             Message[]
-  campaigns            Campaign[]
-  reports              Report[]
-  webhooks             Webhook[]
-  userDepartments      UserDepartment[]
+  id                    String           @id @default(cuid())
+  email                 String           @unique
+  name                  String
+  password              String
+  role                  UserRole         @default(OPERATOR)
+  lastLogin             DateTime?
+  organizationId        String
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  avatar                String?
+  phone                 String?
+  status                UserStatus       @default(ACTIVE)
+  campaigns             Campaign[]
+  assignedConversations Conversation[]   @relation("AssignedOperator")
+  createdConversations  Conversation[]   @relation("CreatedBy")
+  messages              Message[]
+  reports               Report[]
+  userDepartments       UserDepartment[]
+  organization          Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  webhooks              Webhook[]
 
   @@map("users")
 }
 
 model Organization {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  domain      String?  @unique
-  isActive    Boolean  @default(true)
-  settings    Json?    // Configurações da organização
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relacionamentos
-  users       User[]
-  departments Department[]
-  instances   Instance[]
-  contacts    Contact[]
+  id            String         @id @default(cuid())
+  name          String
+  description   String?
+  domain        String?        @unique
+  isActive      Boolean        @default(true)
+  settings      Json?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  campaigns     Campaign[]
+  contacts      Contact[]
   conversations Conversation[]
-  messages    Message[]
-  campaigns   Campaign[]
-  reports     Report[]
-  webhooks    Webhook[]
+  departments   Department[]
+  instances     Instance[]
+  messages      Message[]
+  reports       Report[]
+  users         User[]
+  webhooks      Webhook[]
 
   @@map("organizations")
 }
 
 model Department {
-  id             String   @id @default(cuid())
-  name           String
-  description    String?
-  color          String   @default("#3B82F6")
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  // Relacionamentos
+  id              String           @id @default(cuid())
+  name            String
+  description     String?
+  color           String           @default("#3B82F6")
+  organizationId  String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userDepartments UserDepartment[]
 
   @@unique([name, organizationId])
@@ -79,178 +70,174 @@ model Department {
 }
 
 model UserDepartment {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   userId       String
   departmentId String
-  createdAt    DateTime @default(now())
-  
-  // Relacionamentos
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-  
+  createdAt    DateTime   @default(now())
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([userId, departmentId])
   @@map("user_departments")
 }
 
 model Instance {
-  id             String   @id @default(cuid())
+  id             String         @id @default(cuid())
   name           String
-  instanceName   String   @unique // Nome da instância na Evolution API
+  instanceName   String         @unique
   description    String?
   status         InstanceStatus @default(DISCONNECTED)
   qrCode         String?
   webhookUrl     String?
-  webhookEvents  String[] // Eventos configurados para webhook
-  settings       Json?    // Configurações específicas da instância
+  webhookEvents  String[]
+  settings       Json?
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  // Relacionamentos
-  conversations Conversation[]
-  messages      Message[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  conversations  Conversation[]
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  messages       Message[]
 
   @@map("instances")
 }
 
 model Contact {
-  id             String   @id @default(cuid())
-  phoneNumber    String
-  name           String?
-  email          String?
-  company        String?
-  tags           String[]
-  notes          String?
-  isActive       Boolean  @default(true)
+  id              String         @id @default(cuid())
+  phoneNumber     String
+  name            String?
+  email           String?
+  company         String?
+  tags            String[]
+  notes           String?
+  isActive        Boolean        @default(true)
   lastInteraction DateTime?
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  // Relacionamentos
-  conversations Conversation[]
-  messages      Message[]
+  organizationId  String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  externalId      String?
+  instanceId      String?
+  metadata        Json?
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversations   Conversation[]
+  messages        Message[]
 
   @@unique([phoneNumber, organizationId])
   @@map("contacts")
 }
 
 model Conversation {
-  id             String   @id @default(cuid())
+  id             String             @id @default(cuid())
   title          String?
   status         ConversationStatus @default(OPEN)
-  priority       Priority @default(MEDIUM)
+  priority       Priority           @default(MEDIUM)
   tags           String[]
   notes          String?
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contactId      String
-  contact        Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
   instanceId     String
-  instance       Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   assignedToId   String?
-  assignedTo     User? @relation("AssignedOperator", fields: [assignedToId], references: [id])
   createdById    String
-  createdBy      User @relation("CreatedBy", fields: [createdById], references: [id])
   lastMessageAt  DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  // Relacionamentos
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  externalId     String?
+  metadata       Json?
+  assignedTo     User?              @relation("AssignedOperator", fields: [assignedToId], references: [id])
+  contact        Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  createdBy      User               @relation("CreatedBy", fields: [createdById], references: [id])
+  instance       Instance           @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   messages       Message[]
 
   @@map("conversations")
 }
 
 model Message {
-  id             String   @id @default(cuid())
+  id             String           @id @default(cuid())
   content        String
-  type           MessageType @default(TEXT)
+  type           MessageType      @default(TEXT)
   direction      MessageDirection @default(INBOUND)
-  status         MessageStatus @default(SENT)
+  status         MessageStatus    @default(SENT)
   mediaUrl       String?
   mediaType      String?
-  metadata       Json?    // Dados adicionais da mensagem
+  metadata       Json?
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   contactId      String
-  contact        Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
   instanceId     String
-  instance       Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   sentById       String?
-  sentBy         User? @relation(fields: [sentById], references: [id])
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  contact        Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  instance       Instance         @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sentBy         User?            @relation(fields: [sentById], references: [id])
 
   @@map("messages")
 }
 
 model Campaign {
-  id             String   @id @default(cuid())
-  name           String
-  description    String?
-  status         CampaignStatus @default(DRAFT)
+  id              String         @id @default(cuid())
+  name            String
+  description     String?
+  status          CampaignStatus @default(DRAFT)
   messageTemplate String
-  targetContacts String[] // IDs dos contatos alvo
-  scheduledAt    DateTime?
-  sentAt         DateTime?
-  sentCount      Int      @default(0)
-  deliveredCount Int      @default(0)
-  readCount      Int      @default(0)
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdById    String
-  createdBy      User @relation(fields: [createdById], references: [id])
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  targetContacts  String[]
+  scheduledAt     DateTime?
+  sentAt          DateTime?
+  sentCount       Int            @default(0)
+  deliveredCount  Int            @default(0)
+  readCount       Int            @default(0)
+  organizationId  String
+  createdById     String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       User           @relation(fields: [createdById], references: [id])
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("campaigns")
 }
 
 model Report {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   name           String
   type           ReportType
-  filters        Json?    // Filtros aplicados no relatório
-  data           Json?    // Dados do relatório
+  filters        Json?
+  data           Json?
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdById    String
-  createdBy      User @relation(fields: [createdById], references: [id])
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  createdBy      User         @relation(fields: [createdById], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("reports")
 }
 
 model Webhook {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   name           String
   url            String
-  events         String[] // Eventos que disparam o webhook
-  isActive       Boolean  @default(true)
-  secret         String?  // Chave secreta para validação
+  events         String[]
+  isActive       Boolean      @default(true)
+  secret         String?
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdById    String
-  createdBy      User @relation(fields: [createdById], references: [id])
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  createdBy      User         @relation(fields: [createdById], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("webhooks")
 }
 
-// Enums
 enum UserRole {
   SUPER_ADMIN
   ADMIN
-  MANAGER
   OPERATOR
   VIEWER
+  MANAGER
 }
 
 enum UserStatus {
@@ -263,8 +250,8 @@ enum InstanceStatus {
   CONNECTED
   DISCONNECTED
   CONNECTING
-  QRCODE
   ERROR
+  QRCODE
 }
 
 enum ConversationStatus {

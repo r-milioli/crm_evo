@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Shield, Globe, Database, Zap, CheckCircle, AlertCircle, Trash2, Building, Plus, Edit, Users } from 'lucide-react';
+import { Bell, Shield, Globe, Database, Zap, CheckCircle, AlertCircle, Trash2, Building, Plus, Edit, Users, Download } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import settingsService, { TestConnectionResponse } from '../services/settingsService';
 import departmentsService, { Department, CreateDepartmentData, UpdateDepartmentData } from '../services/departmentsService';
+import instancesService, { Instance } from '../services/instancesService';
+import conversationsService from '../services/conversationsService';
 import DepartmentModal from '../components/DepartmentModal';
 
 const Settings: React.FC = () => {
@@ -14,6 +16,9 @@ const Settings: React.FC = () => {
     isConnected: false,
     isLoading: false
   });
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [selectedInstance, setSelectedInstance] = useState<string>('');
 
   const [showApiKey, setShowApiKey] = useState(false);
   const [testResult, setTestResult] = useState<TestConnectionResponse | null>(null);
@@ -77,6 +82,23 @@ const Settings: React.FC = () => {
     queryKey: ['department-stats'],
     queryFn: departmentsService.getDepartmentStats
   });
+
+  // Buscar instâncias
+  const { data: instancesData } = useQuery({
+    queryKey: ['instances'],
+    queryFn: instancesService.getInstances
+  });
+
+  // Efeito para atualizar instâncias quando os dados são carregados
+  useEffect(() => {
+    if (instancesData) {
+      setInstances(instancesData);
+      // Selecionar a primeira instância por padrão se não houver nenhuma selecionada
+      if (instancesData.length > 0 && !selectedInstance) {
+        setSelectedInstance(instancesData[0].id);
+      }
+    }
+  }, [instancesData, selectedInstance]);
 
   // Mutação para salvar configurações
   const saveConfigMutation = useMutation<
@@ -178,6 +200,34 @@ const Settings: React.FC = () => {
   const handleRemoveConfig = () => {
     if (window.confirm('Tem certeza que deseja remover as configurações da Evolution API?')) {
       removeConfigMutation.mutate();
+    }
+  };
+
+  const handleSyncEvolution = async () => {
+    if (!existingConfig?.isConfigured) {
+      toast.error('Configure a Evolution API primeiro');
+      return;
+    }
+
+    if (!selectedInstance) {
+      toast.error('Selecione uma instância para sincronização');
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const response = await conversationsService.syncEvolutionChats(selectedInstance);
+      
+      if (response.success) {
+        toast.success(`Sincronização concluída: ${response.data.created} criadas, ${response.data.updated} atualizadas`);
+      } else {
+        toast.error(`Erro na sincronização: ${response.message}`);
+      }
+    } catch (error) {
+      console.error('Erro ao sincronizar:', error);
+      toast.error('Erro ao sincronizar com a Evolution API');
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -369,14 +419,44 @@ const Settings: React.FC = () => {
               </button>
 
               {existingConfig?.isConfigured && (
-                <button
-                  onClick={handleRemoveConfig}
-                  disabled={evolutionConfig.isLoading || loadingConfig}
-                  className="btn btn-danger"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Remover
-                </button>
+                <>
+                  <div className="flex items-center space-x-2">
+                    <select
+                      value={selectedInstance}
+                      onChange={(e) => setSelectedInstance(e.target.value)}
+                      className="select select-sm bg-gray-700 border-gray-600 text-white"
+                      disabled={isSyncing || loadingConfig || instances.length === 0}
+                    >
+                      <option value="">Selecione uma instância</option>
+                      {instances.map((instance) => (
+                        <option key={instance.id} value={instance.id}>
+                          {instance.name} ({instance.instanceName})
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleSyncEvolution}
+                      disabled={isSyncing || loadingConfig || !selectedInstance}
+                      className="btn btn-success"
+                    >
+                      {isSyncing ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      ) : (
+                        <Download className="w-4 h-4 mr-2" />
+                      )}
+                      {isSyncing ? 'Sincronizando...' : 'Sincronizar Chats'}
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={handleRemoveConfig}
+                    disabled={evolutionConfig.isLoading || loadingConfig}
+                    className="btn btn-danger"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Remover
+                  </button>
+                </>
               )}
             </div>
 

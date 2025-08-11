@@ -3,6 +3,7 @@ const { body, validationResult } = require('express-validator');
 const { PrismaClient } = require('@prisma/client');
 const logger = require('../utils/logger');
 const { requireRole } = require('../middleware/auth');
+const { syncEvolutionChats, getEvolutionMessages, getEvolutionContacts, getEvolutionMessageStatus, syncEvolutionMessages } = require('../utils/evolutionConfig');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -13,6 +14,108 @@ const conversationValidation = [
   body('status').optional().isIn(['OPEN', 'IN_PROGRESS', 'CLOSED', 'WAITING']).withMessage('Status inválido'),
   body('priority').optional().isIn(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).withMessage('Prioridade inválida')
 ];
+
+// Estatísticas das conversas
+router.get('/stats', async (req, res) => {
+  try {
+    const organizationId = req.user.organizationId;
+
+    const [
+      total,
+      open,
+      inProgress,
+      closed,
+      waiting,
+      urgent,
+      assignedToMe,
+      unread
+    ] = await Promise.all([
+      // Total de conversas
+      prisma.conversation.count({
+        where: { organizationId }
+      }),
+
+      // Conversas abertas
+      prisma.conversation.count({
+        where: {
+          organizationId,
+          status: 'OPEN'
+        }
+      }),
+
+      // Conversas em andamento
+      prisma.conversation.count({
+        where: {
+          organizationId,
+          status: 'IN_PROGRESS'
+        }
+      }),
+
+      // Conversas fechadas
+      prisma.conversation.count({
+        where: {
+          organizationId,
+          status: 'CLOSED'
+        }
+      }),
+
+      // Conversas aguardando
+      prisma.conversation.count({
+        where: {
+          organizationId,
+          status: 'WAITING'
+        }
+      }),
+
+      // Conversas urgentes
+      prisma.conversation.count({
+        where: {
+          organizationId,
+          priority: 'URGENT',
+          status: { not: 'CLOSED' }
+        }
+      }),
+
+      // Conversas atribuídas ao usuário atual
+      prisma.conversation.count({
+        where: {
+          organizationId,
+          assignedToId: req.user.id,
+          status: { not: 'CLOSED' }
+        }
+      }),
+
+      // Conversas com mensagens não lidas
+      prisma.conversation.count({
+        where: {
+          organizationId,
+          status: { not: 'CLOSED' },
+          messages: {
+            some: {
+              direction: 'INBOUND',
+              status: { not: 'READ' }
+            }
+          }
+        }
+      })
+    ]);
+
+    res.json({
+      total,
+      open,
+      inProgress,
+      closed,
+      waiting,
+      urgent,
+      assignedToMe,
+      unread
+    });
+
+  } catch (error) {
+    logger.error('Erro ao buscar estatísticas das conversas:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
 
 // Listar conversas
 router.get('/', async (req, res) => {
@@ -44,7 +147,11 @@ router.get('/', async (req, res) => {
     }
 
     if (assignedTo) {
+      if (assignedTo === 'unassigned') {
+        where.assignedToId = null;
+      } else {
       where.assignedToId = assignedTo;
+      }
     }
 
     if (instanceId) {
@@ -57,13 +164,29 @@ router.get('/', async (req, res) => {
         where,
         skip: parseInt(skip),
         take: parseInt(limit),
-        orderBy: { lastMessageAt: 'desc' },
-        include: {
+        orderBy: [
+          { lastMessageAt: 'desc' },
+          { createdAt: 'desc' }
+        ],
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+          tags: true,
+          notes: true,
+          externalId: true,
+          metadata: true,
+          lastMessageAt: true,
+          createdAt: true,
+          updatedAt: true,
           contact: {
             select: {
               id: true,
               name: true,
-              phoneNumber: true
+              phoneNumber: true,
+              email: true,
+              company: true
             }
           },
           instance: {
@@ -107,7 +230,7 @@ router.get('/', async (req, res) => {
     }
 
     res.json({
-      conversations: filteredConversations,
+      data: filteredConversations,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -133,7 +256,18 @@ router.get('/:id', async (req, res) => {
         id,
         organizationId
       },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        priority: true,
+        tags: true,
+        notes: true,
+        externalId: true,
+        metadata: true,
+        lastMessageAt: true,
+        createdAt: true,
+        updatedAt: true,
         contact: {
           select: {
             id: true,
@@ -193,6 +327,67 @@ router.get('/:id', async (req, res) => {
 
   } catch (error) {
     logger.error('Erro ao buscar conversa:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Buscar mensagens de uma conversa
+router.get('/:id/messages', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 50 } = req.query;
+    const organizationId = req.user.organizationId;
+    const skip = (page - 1) * limit;
+
+    // Verificar se a conversa existe
+    const conversation = await prisma.conversation.findFirst({
+      where: {
+        id,
+        organizationId
+      }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversa não encontrada' });
+    }
+
+    // Buscar mensagens
+    const [messages, total] = await Promise.all([
+      prisma.message.findMany({
+        where: {
+          conversationId: id
+        },
+        skip: parseInt(skip),
+        take: parseInt(limit),
+        orderBy: { createdAt: 'desc' },
+        include: {
+          sentBy: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      }),
+      prisma.message.count({
+        where: {
+          conversationId: id
+        }
+      })
+    ]);
+
+    res.json({
+      data: messages,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+
+  } catch (error) {
+    logger.error('Erro ao buscar mensagens:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -388,12 +583,75 @@ router.put('/:id', conversationValidation, async (req, res) => {
   }
 });
 
-// Atribuir conversa a um operador
-router.post('/:id/assign', requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, res) => {
+// Assumir conversa (auto-atribuição)
+router.post('/:id/assign', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const organizationId = req.user.organizationId;
+
+    // Verificar se a conversa existe
+    const conversation = await prisma.conversation.findFirst({
+      where: {
+        id,
+        organizationId
+      }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversa não encontrada' });
+    }
+
+    // Verificar se a conversa já está atribuída
+    if (conversation.assignedToId) {
+      return res.status(400).json({ error: 'Conversa já está atribuída a outro operador' });
+    }
+
+    // Atribuir conversa ao usuário atual
+    const updatedConversation = await prisma.conversation.update({
+      where: { id },
+      data: { 
+        assignedToId: req.user.id,
+        status: 'IN_PROGRESS'
+      },
+      include: {
+        contact: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true
+          }
+        },
+        instance: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    logger.info(`Conversa ${id} assumida por ${req.user.email}`);
+
+    res.json(updatedConversation);
+
+  } catch (error) {
+    logger.error('Erro ao assumir conversa:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Transferir conversa
+router.post('/:id/transfer', async (req, res) => {
   try {
     const { id } = req.params;
     const { assignedToId } = req.body;
-
     const organizationId = req.user.organizationId;
 
     // Verificar se a conversa existe
@@ -423,7 +681,7 @@ router.post('/:id/assign', requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, re
       }
     }
 
-    // Atualizar atribuição
+    // Transferir conversa
     const updatedConversation = await prisma.conversation.update({
       where: { id },
       data: { 
@@ -431,6 +689,19 @@ router.post('/:id/assign', requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, re
         status: assignedToId ? 'IN_PROGRESS' : 'OPEN'
       },
       include: {
+        contact: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true
+          }
+        },
+        instance: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
         assignedTo: {
           select: {
             id: true,
@@ -441,15 +712,12 @@ router.post('/:id/assign', requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, re
       }
     });
 
-    logger.info(`Conversa ${id} atribuída a ${assignedToId || 'ninguém'} por ${req.user.email}`);
+    logger.info(`Conversa ${id} transferida para ${assignedToId || 'ninguém'} por ${req.user.email}`);
 
-    res.json({
-      message: 'Conversa atribuída com sucesso',
-      conversation: updatedConversation
-    });
+    res.json(updatedConversation);
 
   } catch (error) {
-    logger.error('Erro ao atribuir conversa:', error);
+    logger.error('Erro ao transferir conversa:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -482,15 +750,34 @@ router.post('/:id/close', async (req, res) => {
     // Fechar conversa
     const updatedConversation = await prisma.conversation.update({
       where: { id },
-      data: { status: 'CLOSED' }
+      data: { status: 'CLOSED' },
+      include: {
+        contact: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true
+          }
+        },
+        instance: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
     });
 
     logger.info(`Conversa ${id} fechada por ${req.user.email}`);
 
-    res.json({
-      message: 'Conversa fechada com sucesso',
-      conversation: updatedConversation
-    });
+    res.json(updatedConversation);
 
   } catch (error) {
     logger.error('Erro ao fechar conversa:', error);
@@ -519,18 +806,508 @@ router.post('/:id/reopen', async (req, res) => {
     // Reabrir conversa
     const updatedConversation = await prisma.conversation.update({
       where: { id },
-      data: { status: 'OPEN' }
+      data: { status: 'OPEN' },
+      include: {
+        contact: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true
+          }
+        },
+        instance: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
     });
 
     logger.info(`Conversa ${id} reaberta por ${req.user.email}`);
 
-    res.json({
-      message: 'Conversa reaberta com sucesso',
-      conversation: updatedConversation
-    });
+    res.json(updatedConversation);
 
   } catch (error) {
     logger.error('Erro ao reabrir conversa:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Marcar mensagens como lidas
+router.post('/:id/read', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const organizationId = req.user.organizationId;
+
+    // Verificar se a conversa existe
+    const conversation = await prisma.conversation.findFirst({
+      where: {
+        id,
+        organizationId
+      }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversa não encontrada' });
+    }
+
+    // Marcar mensagens como lidas
+    await prisma.message.updateMany({
+      where: {
+        conversationId: id,
+        direction: 'INBOUND',
+        status: { not: 'READ' }
+      },
+      data: {
+        status: 'READ'
+      }
+    });
+
+    logger.info(`Mensagens da conversa ${id} marcadas como lidas por ${req.user.email}`);
+
+    res.json({ message: 'Mensagens marcadas como lidas' });
+
+  } catch (error) {
+    logger.error('Erro ao marcar mensagens como lidas:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Adicionar tag à conversa
+router.post('/:id/tags', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { tag } = req.body;
+    const organizationId = req.user.organizationId;
+
+    // Verificar se a conversa existe
+    const conversation = await prisma.conversation.findFirst({
+      where: {
+        id,
+        organizationId
+      }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversa não encontrada' });
+    }
+
+    // Adicionar tag
+    const currentTags = conversation.tags || [];
+    if (!currentTags.includes(tag)) {
+      const updatedConversation = await prisma.conversation.update({
+        where: { id },
+        data: {
+          tags: [...currentTags, tag]
+        }
+      });
+
+      logger.info(`Tag "${tag}" adicionada à conversa ${id} por ${req.user.email}`);
+      res.json(updatedConversation);
+    } else {
+      res.json(conversation);
+    }
+
+  } catch (error) {
+    logger.error('Erro ao adicionar tag:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Remover tag da conversa
+router.delete('/:id/tags/:tag', async (req, res) => {
+  try {
+    const { id, tag } = req.params;
+    const organizationId = req.user.organizationId;
+
+    // Verificar se a conversa existe
+    const conversation = await prisma.conversation.findFirst({
+      where: {
+        id,
+        organizationId
+      }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversa não encontrada' });
+    }
+
+    // Remover tag
+    const currentTags = conversation.tags || [];
+    const updatedTags = currentTags.filter(t => t !== tag);
+
+    const updatedConversation = await prisma.conversation.update({
+      where: { id },
+      data: {
+        tags: updatedTags
+      }
+    });
+
+    logger.info(`Tag "${tag}" removida da conversa ${id} por ${req.user.email}`);
+    res.json(updatedConversation);
+
+  } catch (error) {
+    logger.error('Erro ao remover tag:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Adicionar observação à conversa
+router.post('/:id/notes', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { note } = req.body;
+    const organizationId = req.user.organizationId;
+
+    // Verificar se a conversa existe
+    const conversation = await prisma.conversation.findFirst({
+        where: {
+        id,
+        organizationId
+      }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversa não encontrada' });
+    }
+
+    // Atualizar observação
+    const updatedConversation = await prisma.conversation.update({
+      where: { id },
+      data: {
+        notes: note
+      }
+    });
+
+    logger.info(`Observação adicionada à conversa ${id} por ${req.user.email}`);
+    res.json(updatedConversation);
+
+  } catch (error) {
+    logger.error('Erro ao adicionar observação:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Arquivar conversa
+router.post('/:id/archive', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const organizationId = req.user.organizationId;
+
+    // Verificar se a conversa existe
+    const conversation = await prisma.conversation.findFirst({
+        where: {
+        id,
+        organizationId
+      }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversa não encontrada' });
+    }
+
+    // Arquivar conversa
+    const updatedConversation = await prisma.conversation.update({
+      where: { id },
+      data: { 
+        status: 'ARCHIVED'
+      },
+      include: {
+        contact: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true
+          }
+        },
+        instance: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    logger.info(`Conversa ${id} arquivada por ${req.user.email}`);
+    res.json(updatedConversation);
+
+  } catch (error) {
+    logger.error('Erro ao arquivar conversa:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Desarquivar conversa
+router.post('/:id/unarchive', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const organizationId = req.user.organizationId;
+
+    // Verificar se a conversa existe
+    const conversation = await prisma.conversation.findFirst({
+        where: {
+        id,
+        organizationId
+      }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversa não encontrada' });
+    }
+
+    // Desarquivar conversa
+    const updatedConversation = await prisma.conversation.update({
+      where: { id },
+      data: { 
+        status: 'OPEN'
+      },
+      include: {
+        contact: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true
+          }
+        },
+        instance: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    logger.info(`Conversa ${id} desarquivada por ${req.user.email}`);
+    res.json(updatedConversation);
+
+  } catch (error) {
+    logger.error('Erro ao desarquivar conversa:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Buscar conversas arquivadas
+router.get('/archived', async (req, res) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const organizationId = req.user.organizationId;
+    const skip = (page - 1) * limit;
+
+    const [conversations, total] = await Promise.all([
+      prisma.conversation.findMany({
+        where: {
+          organizationId,
+          status: 'ARCHIVED'
+        },
+        skip: parseInt(skip),
+        take: parseInt(limit),
+        orderBy: { updatedAt: 'desc' },
+        include: {
+          contact: {
+            select: {
+              id: true,
+              name: true,
+              phoneNumber: true
+            }
+          },
+          instance: {
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          assignedTo: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        }
+      }),
+      prisma.conversation.count({
+        where: {
+          organizationId,
+          status: 'ARCHIVED'
+        }
+      })
+    ]);
+
+    res.json({
+      data: conversations,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+
+  } catch (error) {
+    logger.error('Erro ao buscar conversas arquivadas:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Buscar conversas urgentes
+router.get('/urgent', async (req, res) => {
+  try {
+    const organizationId = req.user.organizationId;
+
+    const conversations = await prisma.conversation.findMany({
+        where: {
+          organizationId,
+        priority: 'URGENT',
+        status: { not: 'CLOSED' }
+      },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        contact: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true
+          }
+        },
+        instance: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    res.json(conversations);
+
+  } catch (error) {
+    logger.error('Erro ao buscar conversas urgentes:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Buscar conversas não lidas
+router.get('/unread', async (req, res) => {
+  try {
+    const organizationId = req.user.organizationId;
+
+    const conversations = await prisma.conversation.findMany({
+        where: {
+          organizationId,
+        status: { not: 'CLOSED' }
+      },
+      include: {
+        contact: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true
+          }
+        },
+        instance: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
+        messages: {
+          where: {
+            direction: 'INBOUND',
+            status: { not: 'READ' }
+          }
+        }
+      }
+    });
+
+    // Filtrar apenas conversas com mensagens não lidas
+    const unreadConversations = conversations.filter(conv => conv.messages.length > 0);
+
+    res.json(unreadConversations);
+
+  } catch (error) {
+    logger.error('Erro ao buscar conversas não lidas:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Buscar conversas do usuário atual
+router.get('/my', async (req, res) => {
+  try {
+    const organizationId = req.user.organizationId;
+
+    const conversations = await prisma.conversation.findMany({
+        where: {
+          organizationId,
+        assignedToId: req.user.id,
+        status: { not: 'CLOSED' }
+        },
+      orderBy: { lastMessageAt: 'desc' },
+        include: {
+        contact: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true
+          }
+        },
+        instance: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    res.json(conversations);
+
+  } catch (error) {
+    logger.error('Erro ao buscar conversas do usuário:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -570,159 +1347,180 @@ router.delete('/:id', requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, res) =>
   }
 });
 
-// Estatísticas das conversas
-router.get('/stats/overview', async (req, res) => {
+// Rota para sincronizar chats da Evolution API
+router.post('/sync-evolution/:instanceId', requireRole(['ADMIN', 'MANAGER']), async (req, res) => {
   try {
-    const { period = '7d' } = req.query;
+    const { instanceId } = req.params;
     const organizationId = req.user.organizationId;
 
-    // Calcular datas
-    const now = new Date();
-    let startDate;
-    
-    switch (period) {
-      case '1d':
-        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        break;
-      case '7d':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case '30d':
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      default:
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    // Verificar se a instância existe
+    const instance = await prisma.instance.findFirst({
+      where: {
+        id: instanceId,
+        organizationId: organizationId
+      }
+    });
+
+    if (!instance) {
+      return res.status(404).json({ error: 'Instância não encontrada' });
     }
 
-    const [
-      totalConversations,
-      openConversations,
-      inProgressConversations,
-      closedConversations,
-      waitingConversations,
-      conversationsByStatus,
-      conversationsByPriority,
-      avgResponseTime
-    ] = await Promise.all([
-      // Total de conversas no período
-      prisma.conversation.count({
-        where: {
-          organizationId,
-          createdAt: { gte: startDate }
-        }
-      }),
+    // Sincronizar chats usando o instanceName
+    const result = await syncEvolutionChats(organizationId, instance.instanceName);
 
-      // Conversas abertas
-      prisma.conversation.count({
-        where: {
-          organizationId,
-          status: 'OPEN'
-        }
-      }),
-
-      // Conversas em andamento
-      prisma.conversation.count({
-        where: {
-          organizationId,
-          status: 'IN_PROGRESS'
-        }
-      }),
-
-      // Conversas fechadas no período
-      prisma.conversation.count({
-        where: {
-          organizationId,
-          status: 'CLOSED',
-          updatedAt: { gte: startDate }
-        }
-      }),
-
-      // Conversas aguardando
-      prisma.conversation.count({
-        where: {
-          organizationId,
-          status: 'WAITING'
-        }
-      }),
-
-      // Conversas por status
-      prisma.conversation.groupBy({
-        by: ['status'],
-        where: {
-          organizationId,
-          createdAt: { gte: startDate }
-        },
-        _count: {
-          id: true
-        }
-      }),
-
-      // Conversas por prioridade
-      prisma.conversation.groupBy({
-        by: ['priority'],
-        where: {
-          organizationId,
-          createdAt: { gte: startDate }
-        },
-        _count: {
-          id: true
-        }
-      }),
-
-      // Tempo médio de resposta (simplificado)
-      prisma.conversation.findMany({
-        where: {
-          organizationId,
-          createdAt: { gte: startDate },
-          status: 'CLOSED'
-        },
-        include: {
-          messages: {
-            orderBy: { createdAt: 'asc' }
-          }
-        }
-      })
-    ]);
-
-    // Calcular tempo médio de resposta
-    let totalResponseTime = 0;
-    let responseCount = 0;
-
-    avgResponseTime.forEach(conversation => {
-      const messages = conversation.messages;
-      for (let i = 0; i < messages.length - 1; i++) {
-        if (messages[i].direction === 'INBOUND' && messages[i + 1].direction === 'OUTBOUND') {
-          const responseTime = messages[i + 1].createdAt.getTime() - messages[i].createdAt.getTime();
-          totalResponseTime += responseTime;
-          responseCount++;
-        }
-      }
-    });
-
-    const averageResponseTime = responseCount > 0 ? Math.round(totalResponseTime / responseCount / 1000) : 0;
-
-    res.json({
-      period,
-      stats: {
-        totalConversations,
-        openConversations,
-        inProgressConversations,
-        closedConversations,
-        waitingConversations,
-        conversationsByStatus: conversationsByStatus.reduce((acc, item) => {
-          acc[item.status.toLowerCase()] = item._count.id;
-          return acc;
-        }, {}),
-        conversationsByPriority: conversationsByPriority.reduce((acc, item) => {
-          acc[item.priority.toLowerCase()] = item._count.id;
-          return acc;
-        }, {}),
-        averageResponseTime // em segundos
-      }
-    });
+    if (result.success) {
+      res.json({
+        message: result.message,
+        data: result.data
+      });
+    } else {
+      res.status(400).json({
+        error: result.message
+      });
+    }
 
   } catch (error) {
-    logger.error('Erro ao buscar estatísticas das conversas:', error);
+    logger.error('Erro ao sincronizar chats da Evolution API:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Rota para buscar mensagens de um chat específico da Evolution API
+router.get('/evolution-messages/:instanceId/:chatId', requireRole(['ADMIN', 'MANAGER', 'OPERATOR']), async (req, res) => {
+  try {
+    const { instanceId, chatId } = req.params;
+    const organizationId = req.user.organizationId;
+
+    // Verificar se a instância existe
+    const instance = await prisma.instance.findFirst({
+      where: {
+        id: instanceId,
+        organizationId: organizationId
+      }
+    });
+
+    if (!instance) {
+      return res.status(404).json({ error: 'Instância não encontrada' });
+    }
+
+    // Buscar mensagens usando o instanceName
+    const result = await getEvolutionMessages(organizationId, instance.instanceName, chatId);
+
+    if (result.success) {
+      res.json({
+        message: result.message,
+        data: result.data
+      });
+    } else {
+      res.status(400).json({
+        error: result.message
+      });
+    }
+
+  } catch (error) {
+    logger.error('Erro ao buscar mensagens da Evolution API:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Rota para buscar contatos da Evolution API
+router.post('/evolution-contacts/:instanceId', requireRole(['ADMIN', 'MANAGER', 'OPERATOR']), async (req, res) => {
+  try {
+    const { instanceId } = req.params;
+    const organizationId = req.user.organizationId;
+
+    const instance = await prisma.instance.findFirst({
+      where: { id: instanceId, organizationId: organizationId }
+    });
+    if (!instance) return res.status(404).json({ error: 'Instância não encontrada' });
+
+    const result = await getEvolutionContacts(organizationId, instance.instanceName);
+    
+    if (result.success) {
+      res.json({ 
+        success: true,
+        message: result.message, 
+        data: result.data 
+      });
+    } else {
+      res.status(400).json({ 
+        success: false,
+        message: result.message 
+      });
+    }
+  } catch (error) {
+    logger.error('Erro ao buscar contatos da Evolution API:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Rota para sincronizar mensagens de uma conversa da Evolution API
+router.post('/:conversationId/sync-messages', requireRole(['ADMIN', 'MANAGER', 'OPERATOR']), async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { remoteJid } = req.body;
+    const organizationId = req.user.organizationId;
+
+    if (!remoteJid) {
+      return res.status(400).json({ error: 'Remote JID é obrigatório' });
+    }
+
+    // Buscar a conversa para obter a instância
+    const conversation = await prisma.conversation.findFirst({
+      where: { 
+        id: conversationId, 
+        organizationId: organizationId 
+      },
+      include: {
+        instance: true
+      }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversa não encontrada' });
+    }
+
+    const result = await syncEvolutionMessages(
+      organizationId, 
+      conversation.instance.instanceName, 
+      conversationId, 
+      remoteJid
+    );
+
+    if (result.success) {
+      res.json({ 
+        success: true,
+        message: result.message, 
+        data: result.data 
+      });
+    } else {
+      res.status(400).json({ 
+        success: false,
+        error: result.message 
+      });
+    }
+  } catch (error) {
+    logger.error('Erro ao sincronizar mensagens da Evolution API:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Rota para buscar status de uma mensagem específica da Evolution API
+router.post('/evolution-message-status/:instanceId/:remoteJid/:messageId', requireRole(['ADMIN', 'MANAGER', 'OPERATOR']), async (req, res) => {
+  try {
+    const { instanceId, remoteJid, messageId } = req.params;
+    const organizationId = req.user.organizationId;
+
+    const instance = await prisma.instance.findFirst({
+      where: { id: instanceId, organizationId: organizationId }
+    });
+    if (!instance) return res.status(404).json({ error: 'Instância não encontrada' });
+
+    const result = await getEvolutionMessageStatus(organizationId, instance.instanceName, remoteJid, messageId);
+    if (result.success) res.json({ message: result.message, data: result.data });
+    else res.status(400).json({ error: result.message });
+  } catch (error) {
+    logger.error('Erro ao buscar status da mensagem da Evolution API:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
