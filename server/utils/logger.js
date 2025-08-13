@@ -25,27 +25,38 @@ const logger = winston.createLogger({
   format: logFormat,
   defaultMeta: { service: 'crm-evolution' },
   transports: [
-    // Arquivo de log de erros
-    new winston.transports.File({
-      filename: path.join(__dirname, '../../logs/error.log'),
-      level: 'error',
-      maxsize: 5242880, // 5MB
-      maxFiles: 5,
-    }),
-    // Arquivo de log geral
-    new winston.transports.File({
-      filename: path.join(__dirname, '../../logs/combined.log'),
-      maxsize: 5242880, // 5MB
-      maxFiles: 5,
+    // Console transport sempre ativo
+    new winston.transports.Console({
+      format: consoleFormat
     }),
   ],
 });
 
-// Adicionar console transport em desenvolvimento
+// Adicionar arquivos de log apenas se o diretório logs existir e for gravável
 if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: consoleFormat
-  }));
+  try {
+    const fs = require('fs');
+    const logsDir = path.join(__dirname, '../../logs');
+    
+    // Verificar se o diretório logs existe e é gravável
+    if (fs.existsSync(logsDir) && fs.accessSync(logsDir, fs.constants.W_OK)) {
+      logger.add(new winston.transports.File({
+        filename: path.join(logsDir, 'error.log'),
+        level: 'error',
+        maxsize: 5242880, // 5MB
+        maxFiles: 5,
+      }));
+      
+      logger.add(new winston.transports.File({
+        filename: path.join(logsDir, 'combined.log'),
+        maxsize: 5242880, // 5MB
+        maxFiles: 5,
+      }));
+    }
+  } catch (error) {
+    // Se não conseguir criar arquivos de log, continua apenas com console
+    console.warn('Não foi possível configurar arquivos de log:', error.message);
+  }
 }
 
 module.exports = logger;

@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  crm-evolution:
+    image: automacaodebaixocusto/crm:v1.0.3
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        failure_action: pause
+        monitor: 60s
+        max_failure_ratio: 0.3
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.crm-evolution.rule=Host(`${DOMAIN}`)"
+        - "traefik.http.routers.crm-evolution.entrypoints=websecure"
+        - "traefik.http.routers.crm-evolution.tls.certresolver=letsencrypt"
+        - "traefik.http.services.crm-evolution.loadbalancer.server.port=3001"
+        - "traefik.docker.network=network_public"
+        - "traefik.http.middlewares.crm-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
+        - "traefik.http.middlewares.crm-headers.headers.customrequestheaders.X-Forwarded-Host=${DOMAIN}"
+        - "traefik.http.routers.crm-evolution.middlewares=crm-headers"
+        - "traefik.http.routers.crm-evolution.priority=100"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+      - CLIENT_URL=${CLIENT_URL}
+      - API_BASE_URL=${API_BASE_URL}
+      - WEBHOOK_BASE_URL=${WEBHOOK_BASE_URL}
+      - REACT_APP_API_URL=${REACT_APP_API_URL}
+      - EVOLUTION_API_URL=${EVOLUTION_API_URL}
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - UPLOAD_PATH=./uploads
+      - MAX_FILE_SIZE=10485760
+      - REDIS_URL=${REDIS_URL}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+    volumes:
+      - crm_uploads:/app/uploads
+    networks:
+      - network_public
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  crm_uploads:
+    driver: local
+
+networks:
+  network_public:
+    external: true
