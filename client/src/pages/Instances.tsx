@@ -393,7 +393,14 @@ const Instances: React.FC = () => {
                 </div>
 
                 <div className="flex space-x-2">
-                  {instance.status === 'DISCONNECTED' && (
+                  {(
+                    // Desconectado ou estados que permitem iniciar conexão
+                    instance.status === 'DISCONNECTED' ||
+                    instance.status === 'UNKNOWN' ||
+                    instance.status === 'ERROR' ||
+                    // Se vier do Evolution como desconectado
+                    instance.connectionStatus === 'close'
+                  ) && !instance.isFromEvolution && (
                     <button 
                       onClick={() => handleConnectInstance(instance.id)}
                       disabled={loadingInstances.has(instance.id)}
@@ -405,6 +412,20 @@ const Instances: React.FC = () => {
                         <QrCode className="w-4 h-4 mr-2" />
                       )}
                       Conectar
+                    </button>
+                  )}
+                  {(instance.status === 'CONNECTING' || instance.connectionStatus === 'connecting') && !instance.isFromEvolution && (
+                    <button 
+                      onClick={() => handleConnectInstance(instance.id)}
+                      disabled={loadingInstances.has(instance.id)}
+                      className="btn btn-info flex-1"
+                    >
+                      {loadingInstances.has(instance.id) ? (
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      ) : (
+                        <QrCode className="w-4 h-4 mr-2" />
+                      )}
+                      Gerar QR
                     </button>
                   )}
                   {instance.status === 'QRCODE' && (

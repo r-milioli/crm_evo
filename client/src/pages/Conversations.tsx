@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Search, 
   MessageCircle, 
@@ -24,6 +24,7 @@ import NewMessageNotification from '../components/NewMessageNotification';
 import { useAuthStore } from '../store/authStore';
 import { useApi } from '../services/api';
 import { cn } from '../utils/cn';
+import { io, Socket } from 'socket.io-client';
 
 
 
@@ -44,9 +45,30 @@ const Conversations: React.FC = () => {
   
   // Notification states
   const [notifications, setNotifications] = useState<Array<{id: string, message: string}>>([]);
+  const [modalRefreshKey, setModalRefreshKey] = useState<number>(0);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
-  const { user } = useAuthStore();
+  const { user, organization } = useAuthStore();
   const api = useApi();
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const lastSuccessRef = useRef<number>(0);
+
+  // Helper para extrair organizationId do JWT quando o store ainda não tiver
+  const getOrgIdFromToken = () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useAuthStore: auth } = require('../store/authStore');
+      const tok = auth.getState().token as string | null;
+      if (!tok) return undefined;
+      const payloadPart = tok.split('.')[1];
+      if (!payloadPart) return undefined;
+      const payloadStr = decodeURIComponent(atob(payloadPart).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+      const payload = JSON.parse(payloadStr);
+      return payload.organizationId;
+    } catch {
+      return undefined;
+    }
+  };
 
   // Debug: Log quando usuário muda
   useEffect(() => {
@@ -63,8 +85,13 @@ const Conversations: React.FC = () => {
     try {
       const statsData = await conversationsService.getConversationStats();
       setStats(statsData);
+      lastSuccessRef.current = Date.now();
     } catch (error) {
-      console.error('Erro ao carregar estatísticas:', error);
+      const now = Date.now();
+      const suppress = now - (lastSuccessRef.current || 0) < 1500;
+      if (!suppress) {
+        console.warn('Erro ao carregar estatísticas:', error);
+      }
     }
   }, []);
 
@@ -79,9 +106,14 @@ const Conversations: React.FC = () => {
       const response = await conversationsService.getConversations(filters, currentPage, 20);
       setConversations(response.data);
       setTotalPages(response.pagination.pages);
+      lastSuccessRef.current = Date.now();
     } catch (error) {
-      console.error('Erro ao carregar conversas:', error);
-      toast.error('Erro ao carregar conversas');
+      const now = Date.now();
+      const suppress = now - (lastSuccessRef.current || 0) < 1500;
+      if (!suppress) {
+        console.warn('Erro ao carregar conversas:', error);
+        toast.error('Erro ao carregar conversas');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -97,12 +129,79 @@ const Conversations: React.FC = () => {
     }
   }, []);
 
+  // Debounce para reagir a eventos de tempo real sem sobrecarregar a API
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+    }
+    refreshTimerRef.current = setTimeout(() => {
+      loadConversations();
+      loadStats();
+      if (isModalOpen && selectedConversation) {
+        setModalRefreshKey(prev => prev + 1);
+      }
+    }, 600);
+  }, [isModalOpen, selectedConversation, loadConversations, loadStats]);
+
   // Carregar dados iniciais
   useEffect(() => {
     loadConversations();
     loadStats();
     loadInstances();
   }, [filters, currentPage, loadConversations, loadInstances, loadStats]);
+
+  // Conectar ao Socket.IO do backend para eventos em tempo real
+  useEffect(() => {
+    // Determinar URL do servidor Socket.IO
+    const envApiUrl = process.env.REACT_APP_API_URL;
+    let socketServerUrl = window.location.origin;
+    if (process.env.NODE_ENV !== 'production') {
+      socketServerUrl = (envApiUrl && envApiUrl.startsWith('http'))
+        ? envApiUrl.replace(/\/?api$/, '')
+        : 'http://localhost:3001';
+    }
+
+    const s = io(socketServerUrl, { transports: ['websocket'] });
+    setSocket(s);
+
+    s.on('connect', () => {
+      const orgId = user?.organizationId || organization?.id || getOrgIdFromToken();
+      if (orgId) {
+        s.emit('join-organization', orgId);
+      }
+    });
+
+    // Receber eventos encaminhados do backend (via webhooks Evolution)
+    s.on('evolution-event', (payload: { instanceName: string; eventType: string; data: any }) => {
+      const evt = String(payload?.eventType || '').toUpperCase().replace(/\./g, '_');
+      const isMessageEvent = evt.includes('MESSAGE');
+      const isConnectionEvent = evt.includes('CONNECTION');
+      const isQrEvent = evt.includes('QRCODE');
+
+      if (isMessageEvent || isConnectionEvent || isQrEvent) {
+        scheduleRefresh();
+      }
+
+      if (isMessageEvent) {
+        setNotifications(prev => [{ id: Date.now().toString(), message: 'Nova mensagem recebida' }, ...prev].slice(0, 5));
+      }
+    });
+
+    return () => {
+      s.disconnect();
+      setSocket(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.organizationId, organization?.id]);
+
+  // Quando o organizationId ficar disponível depois da conexão, entrar na sala
+  useEffect(() => {
+    if (!socket) return;
+    const orgId = user?.organizationId || organization?.id || getOrgIdFromToken();
+    if (socket.connected && orgId) {
+      socket.emit('join-organization', orgId);
+    }
+  }, [socket, user?.organizationId, organization?.id]);
 
 
 
@@ -298,6 +397,62 @@ const Conversations: React.FC = () => {
               title="Verificar Status Webhook"
             >
               🔍 Webhook
+            </button>
+          )}
+
+          {/* Botão de Configurar WebSocket Evolution */}
+          {selectedInstance && (
+            <button
+              onClick={async () => {
+                const instance = instances.find(inst => inst.id === selectedInstance);
+                if (instance) {
+                  try {
+                    console.log('🛰️ Configurando WebSocket...');
+                    const response = await api.post(`/websockets/configure/${instance.instanceName}`);
+                    console.log('✅ WebSocket configurado:', response.data);
+                    if (response.success || response.data?.success) {
+                      toast.success('WebSocket habilitado na Evolution API');
+                    } else {
+                      toast.error(`Erro: ${response.error || response.data?.error}`);
+                    }
+                  } catch (error: any) {
+                    console.error('Erro ao configurar WebSocket:', error);
+                    toast.error(`Erro ao configurar WebSocket: ${error.response?.data?.error || 'Erro desconhecido'}`);
+                  }
+                }
+              }}
+              className="btn btn-sm btn-info"
+              title="Configurar WebSocket Evolution"
+            >
+              🛰️ WS On
+            </button>
+          )}
+
+          {/* Botão de Status WebSocket Evolution */}
+          {selectedInstance && (
+            <button
+              onClick={async () => {
+                const instance = instances.find(inst => inst.id === selectedInstance);
+                if (instance) {
+                  try {
+                    console.log('📡 Verificando status do WebSocket...');
+                    const response = await api.get(`/websockets/status/${instance.instanceName}`);
+                    console.log('📊 Status do WebSocket:', response.data);
+                    if (response.success || response.data?.success) {
+                      toast.success(`WS: ${JSON.stringify(response.data || response)}`);
+                    } else {
+                      toast.error(`Erro: ${response.error || response.data?.error}`);
+                    }
+                  } catch (error: any) {
+                    console.error('Erro ao verificar WebSocket:', error);
+                    toast.error(`Erro ao verificar WebSocket: ${error.response?.data?.error || 'Erro desconhecido'}`);
+                  }
+                }
+              }}
+              className="btn btn-sm btn-secondary"
+              title="Verificar Status WebSocket Evolution"
+            >
+              📡 WS
             </button>
           )}
           
@@ -572,6 +727,7 @@ const Conversations: React.FC = () => {
           setSelectedConversation(null);
         }}
         onUpdate={handleConversationUpdate}
+        refreshKey={modalRefreshKey}
       />
 
       {/* Painel de informações da Evolution API */}

@@ -22,7 +22,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
         {/* Title */}
         <div className="flex-1 lg:flex-none">
-          <h1 className="text-lg font-semibold text-white">CRM Evolution</h1>
+          <h1 className="text-lg font-semibold text-white">Bem-vindo, {user?.name}</h1>
         </div>
 
         {/* Right side */}

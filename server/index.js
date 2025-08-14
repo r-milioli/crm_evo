@@ -28,6 +28,7 @@ const reportRoutes = require('./routes/reports');
 const webhookRoutes = require('./routes/webhooks');
 const dashboardRoutes = require('./routes/dashboard');
 const settingsRoutes = require('./routes/settings');
+const websocketsRoutes = require('./routes/websockets');
 const departmentRoutes = require('./routes/departments');
 const kanbanRoutes = require('./routes/kanbans');
 const kanbanActionRoutes = require('./routes/kanbanActions');
@@ -138,6 +139,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/webhooks', webhookRoutes); // Rotas de configuração de webhook (protegidas)
+app.use('/api/websockets', websocketsRoutes);
 
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/settings', settingsRoutes);

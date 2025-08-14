@@ -255,7 +255,7 @@ const Register: React.FC = () => {
         {/* Footer */}
         <div className="text-center mt-8">
           <p className="text-xs text-gray-500">
-            © 2024 CRM Evolution. Todos os direitos reservados.
+            © 2025 CRM Evolution. Todos os direitos reservados.
           </p>
         </div>
       </div>

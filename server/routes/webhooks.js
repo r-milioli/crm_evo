@@ -376,4 +376,91 @@ router.get('/test', (req, res) => {
   });
 });
 
+// Expor funções internas para reuso pelo WS Manager
 module.exports = router;
+module.exports.handleConnectionUpdateInternal = async function(instanceName, organizationId, payload, app){
+  const prisma = new (require('@prisma/client').PrismaClient)();
+  try {
+    const instance = await prisma.instance.findFirst({ where: { instanceName, organizationId } });
+    if (!instance) return;
+    const status = payload?.data?.state || payload?.data?.connection?.state || payload?.data?.status;
+    if (!status) return;
+    await prisma.instance.update({ where: { id: instance.id }, data: { status, qrCode: status === 'CONNECTED' ? null : instance.qrCode } });
+  } catch(err){ logger.error('handleConnectionUpdateInternal error:', err);} finally { await prisma.$disconnect(); }
+};
+module.exports.handleMessageUpsertInternal = async function(instanceName, organizationId, payload, app){
+  const prisma = new (require('@prisma/client').PrismaClient)();
+  try {
+    const instance = await prisma.instance.findFirst({ where: { instanceName, organizationId } });
+    if (!instance) return;
+    const data = payload?.data || {};
+    const messageData = data.messages?.[0] || data.message || data;
+    if (!messageData) return;
+    const remoteJid = messageData?.key?.remoteJid || data.remoteJid || data.chatId || data.jid;
+    const phoneNumber = String(remoteJid || '').split('@')[0];
+    if (!phoneNumber) return;
+    const messageContent = messageData.message?.conversation || messageData.message?.extendedTextMessage?.text || messageData.message?.imageMessage?.caption || messageData.message?.videoMessage?.caption || messageData.message?.audioMessage?.caption || messageData.message?.documentMessage?.caption || messageData.conversation || '';
+    let messageType = 'TEXT'; let mediaUrl = null; let mediaType = null;
+    if (messageData.message?.imageMessage) { messageType = 'IMAGE'; mediaUrl = messageData.message.imageMessage.url; mediaType = 'image'; }
+    else if (messageData.message?.videoMessage) { messageType = 'VIDEO'; mediaUrl = messageData.message.videoMessage.url; mediaType = 'video'; }
+    else if (messageData.message?.audioMessage) { messageType = 'AUDIO'; mediaUrl = messageData.message.audioMessage.url; mediaType = 'audio'; }
+    else if (messageData.message?.documentMessage) { messageType = 'DOCUMENT'; mediaUrl = messageData.message.documentMessage.url; mediaType = 'document'; }
+    let contact = await prisma.contact.findFirst({ where: { phoneNumber, organizationId } });
+    if (!contact) {
+      const contactName = data.contacts?.[0]?.name || data.contacts?.[0]?.pushName || messageData.pushName || `Contato ${phoneNumber}`;
+      contact = await prisma.contact.create({ data: { phoneNumber, name: contactName, organizationId } });
+    } else {
+      await prisma.contact.update({ where: { id: contact.id }, data: { lastInteraction: new Date() } });
+    }
+    let conversation = await prisma.conversation.findFirst({ where: { contactId: contact.id, instanceId: instance.id, status: { not: 'CLOSED' } } });
+    if (!conversation) {
+      conversation = await prisma.conversation.create({ data: { title: `Conversa com ${contact.name}`, contactId: contact.id, instanceId: instance.id, organizationId, createdById: null } });
+    }
+    await prisma.message.create({ data: { content: messageContent, type: messageType, direction: 'INBOUND', status: 'DELIVERED', mediaUrl, mediaType, metadata: messageData, organizationId, conversationId: conversation.id, contactId: contact.id, instanceId: instance.id } });
+    await prisma.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } });
+  } catch(err){ logger.error('handleMessageUpsertInternal error:', err);} finally { await prisma.$disconnect(); }
+};
+module.exports.handleMessageUpdateInternal = async function(instanceName, organizationId, payload, app){
+  const prisma = new (require('@prisma/client').PrismaClient)();
+  try {
+    const instance = await prisma.instance.findFirst({ where: { instanceName, organizationId } });
+    if (!instance) return;
+    const messageData = payload?.data?.messages?.[0] || payload?.data?.message || payload?.data;
+    if (!messageData) return;
+    const messageId = messageData?.key?.id || messageData?.id;
+    if (!messageId) {
+      // Sem ID não conseguimos correlacionar; ignorar silenciosamente
+      return;
+    }
+    const message = await prisma.message.findFirst({
+      where: {
+        instanceId: instance.id,
+        OR: [
+          { metadata: { path: ['key','id'], equals: messageId } },
+          { metadata: { path: ['id'], equals: messageId } }
+        ]
+      }
+    });
+    if (message) {
+      let status = 'SENT';
+      const updateStatus = messageData.update?.status || messageData.status;
+      if (updateStatus === 'READ') status = 'READ';
+      else if (updateStatus === 'DELIVERED_ACK' || updateStatus === 'DELIVERED') status = 'DELIVERED';
+      await prisma.message.update({ where: { id: message.id }, data: { status } });
+    }
+  } catch(err){ logger.error('handleMessageUpdateInternal error:', err);} finally { await prisma.$disconnect(); }
+};
+module.exports.handleContactUpdateInternal = async function(instanceName, organizationId, payload, app){
+  const prisma = new (require('@prisma/client').PrismaClient)();
+  try {
+    const instance = await prisma.instance.findFirst({ where: { instanceName, organizationId } });
+    if (!instance) return;
+    const contactData = payload?.data?.contacts?.[0];
+    if (!contactData) return;
+    const phoneNumber = String(contactData.id || '').split('@')[0];
+    await prisma.contact.updateMany({ where: { phoneNumber, organizationId }, data: { name: contactData.name || contactData.pushName, lastInteraction: new Date() } });
+  } catch(err){ logger.error('handleContactUpdateInternal error:', err);} finally { await prisma.$disconnect(); }
+};
+module.exports.handleGroupUpdateInternal = async function(instanceName, organizationId, payload, app){
+  // Placeholder para futuros usos
+};

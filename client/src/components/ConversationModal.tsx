@@ -28,11 +28,12 @@ interface ConversationModalProps {
   onUpdate: (conversation: Conversation) => void;
 }
 
-const ConversationModal: React.FC<ConversationModalProps> = ({
+const ConversationModal: React.FC<ConversationModalProps & { refreshKey?: number }> = ({
   conversation,
   isOpen,
   onClose,
-  onUpdate
+  onUpdate,
+  refreshKey
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -89,6 +90,13 @@ const ConversationModal: React.FC<ConversationModalProps> = ({
       setNote(conversation.notes || '');
     }
   }, [conversation, isOpen, loadMessages]);
+
+  // Recarregar mensagens ao receber um refresh externo
+  useEffect(() => {
+    if (conversation && isOpen) {
+      loadMessages();
+    }
+  }, [refreshKey]);
 
   useEffect(() => {
     scrollToBottom();

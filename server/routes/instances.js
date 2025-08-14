@@ -42,7 +42,7 @@ router.get('/', async (req, res) => {
     logger.info('Filtros de busca:', where);
 
     // Buscar instâncias do banco local
-    const [localInstances, total] = await Promise.all([
+    const [localInstancesRaw, total] = await Promise.all([
       prisma.instance.findMany({
         where,
         skip: parseInt(skip),
@@ -59,6 +59,8 @@ router.get('/', async (req, res) => {
       }),
       prisma.instance.count({ where })
     ]);
+
+    let localInstances = localInstancesRaw;
 
     logger.info('Instâncias locais encontradas:', {
       count: localInstances.length,
@@ -492,16 +494,13 @@ router.post('/', requireRole(['ADMIN', 'SUPER_ADMIN']), instanceValidation, asyn
         baseUrl: evolutionConfig.baseUrl
       });
 
-             const requestData = {
-         instanceName,
+             const sanitizedInstanceName = String(instanceName || '').trim();
+       // Enviar exatamente o payload exigido pela Evolution API
+       const requestData = {
+         instanceName: sanitizedInstanceName,
          qrcode: true,
          integration: "WHATSAPP-BAILEYS"
        };
-
-       // Configurar webhook automaticamente
-       requestData.webhook = `${process.env.API_BASE_URL || 'http://localhost:3001'}/api/webhooks/evolution/${instanceName}`;
-       requestData.webhookByEvents = webhookEvents || false;
-       requestData.events = webhookEvents || ['messages.upsert', 'connection.update'];
 
       logger.info('Dados da requisição:', requestData);
       logger.info('URL da requisição:', `${evolutionConfig.baseUrl}/instance/create`);
@@ -569,7 +568,8 @@ router.post('/', requireRole(['ADMIN', 'SUPER_ADMIN']), instanceValidation, asyn
         errorDetails = 'Verifique se a URL da API está correta e se o servidor está rodando';
       }
 
-      return res.status(500).json({ 
+      const statusCode = evolutionError.response?.status || 500;
+      return res.status(statusCode).json({ 
         error: errorMessage,
         details: errorDetails
       });

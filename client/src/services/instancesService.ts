@@ -5,7 +5,7 @@ export interface Instance {
   name: string;
   instanceName: string;
   description?: string;
-  status: 'CONNECTED' | 'DISCONNECTED' | 'CONNECTING' | 'QRCODE' | 'UNKNOWN';
+  status: 'CONNECTED' | 'DISCONNECTED' | 'CONNECTING' | 'QRCODE' | 'UNKNOWN' | 'ERROR';
   qrCode?: string;
   webhookEvents?: string[];
   settings?: any;
@@ -50,7 +50,7 @@ class InstancesService {
   }
 
   // Criar nova instância
-  async createInstance(data: CreateInstanceData): Promise<Instance> {
+  async createInstance(data: CreateInstanceData): Promise<any> {
     const response = await apiService.post('/instances', data);
     return response;
   }
